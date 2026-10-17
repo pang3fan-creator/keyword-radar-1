@@ -1,0 +1,17 @@
+config.json
+state/
+gsc_token.json
+gsc_client.json
+report.md
+report.json
+sources.md
+__pycache__/
+.pytest_cache/
+.venv/
+.env
+*.egg-info/
+build/
+dist/
+.DS_Store
+
+gitignore/
