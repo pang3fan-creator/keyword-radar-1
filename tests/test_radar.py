@@ -517,14 +517,6 @@ def test_searches_a_day_follow_the_terms_own_volume_along_its_curve():
     assert usecases.own_per_day(points, 0, "2026-08", TODAY) is None
 
 
-def test_the_benchmark_is_sized_from_terms_whose_volume_is_known():
-    def row(volume, term_level, bench_level):
-        return {"volume": volume, "month": "2026-08", "_pair": [(d, term_level, bench_level) for d, _ in _daily([0] * 90)]}
-    # a term with 3,000 searches a day at a third of the benchmark's level puts the benchmark at 9,000
-    assert usecases.bench_daily([row(90000, 10, 30), row(900, 1, 50)]) == 9000   # the 900/month term is too small to count
-    assert usecases.bench_daily([row(900, 1, 50)]) is None
-
-
 def test_decisions():
     up, flat, down = {"now": "rising"}, {"now": "flat"}, {"now": "fading"}
     assert usecases.decide(up, 5000, 300) == "prioritize" and usecases.decide(up, 40, 300) == "watch"
@@ -545,9 +537,15 @@ def _fake_usecase_network(monkeypatch):
     monkeypatch.setattr(usecases, "volumes", lambda phrases, loc: (
         {"ai image detector": {"volume": 60000, "month": "2026-08"}, "photoshop alternative": {"volume": 6000, "month": "2026-08"},
          "nobody searches this": {"volume": 0, "month": ""}}, 90000))
-    monkeypatch.setattr(usecases, "fetch_series", lambda keywords, bench, today: (
-        {k: {"solo": rise if k == "synthid detector" else flat,
-             "pair": [(d, v, 40) for d, v in (rise if k == "synthid detector" else flat)]} for k in keywords}, 7200))
+    monkeypatch.setattr(usecases, "solo_series", lambda phrases, today: (
+        {p: (rise if p == "synthid detector" else flat) for p in phrases}, 7200))
+    monkeypatch.setattr(usecases, "basket_pairs", lambda names, bench, today: (
+        {n: {b: [(d, v, 40) for d, v in (rise if n == "synthid detector" else flat)] for b in bench} for n in names}, 7200))
+    real_load = usecases.snap.load
+    monkeypatch.setattr(usecases.snap, "load", lambda path: (
+        {"terms": {"chatgpt": {"ok": True, "daily": 1000, "reason": ""},
+                   "canva": {"ok": True, "daily": 2000, "reason": ""}}}
+        if "benchmarks" in str(path) else real_load(path)))
 
 
 def test_usecases_run_builds_one_table_and_reads_a_name_twice(cfg, tmp_path, monkeypatch):
@@ -559,7 +557,7 @@ def test_usecases_run_builds_one_table_and_reads_a_name_twice(cfg, tmp_path, mon
     assert rows["synthid detector"]["kind"] == "name" and rows["synthid detector"]["decision"] == "prioritize"
     assert rows["ai image detector"]["per_day"] == 2000 and rows["ai image detector"]["decision"] == "watch"
     assert rows["photoshop alternative"]["brand"] and rows["photoshop alternative"]["decision"] == "skip"
-    assert uc["bench_daily"] == 2200 and uc["cost_micros"] == 100200   # the median of 4,000 and 400
+    assert uc["bench_daily"] == 1500                                    # the median of 1,000 and 2,000
     assert usecases.run(cfg, tmp_path, ["synthid detector"], {}, TODAY + timedelta(days=1))["names"] == []
     assert usecases.run(cfg, tmp_path, ["synthid detector"], {}, TODAY + timedelta(days=3))["names"] == ["synthid detector"]
     assert usecases.run(cfg, tmp_path, ["synthid detector"], {}, TODAY + timedelta(days=9))["names"] == []
@@ -638,7 +636,7 @@ def test_with_a_key_related_queries_join_the_table_and_other_names_become_leads(
     rows = {r["phrase"]: r for r in uc["rows"]}
     assert rows["ai photo detector"]["source"] == "searched" and "gpt image 2.5" not in rows
     assert uc["cosearch"] == [{"term": "gpt image 2.5", "with": "synthid detector"}]
-    assert uc["tails"] == {"synthid detector": ["synthid detector online"]} and uc["cost_micros"] == 106200
+    assert uc["tails"] == {"synthid detector": ["synthid detector online"]} and uc["cost_micros"] == 113400
     text = "\n".join(report.keyword_table(cfg, uc))
     assert "| **ai photo detector** 🖼 🔎 |" in text and "gpt image 2.5 (with synthid detector)" in text and "synthid detector online" in text
     assert "incomplete today" not in text
@@ -656,7 +654,7 @@ def test_without_a_key_the_table_says_the_source_is_off_and_a_failure_is_reporte
     monkeypatch.setattr(usecases.goanyapi, "related_queries", down)
     cfg["usecases"]["country_trends"] = False
     uc = usecases.run(cfg, tmp_path / "b", ["synthid detector"], {}, TODAY)
-    assert uc["related_errors"] == ["synthid detector: HTTP 502"] and uc["kept"] == 2
+    assert uc["related_errors"] == ["synthid detector: HTTP 502"] and uc["kept"] == 3
     assert "HTTP 502" in "\n".join(report.keyword_table(cfg, uc))
 
 

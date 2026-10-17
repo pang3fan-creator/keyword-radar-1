@@ -38,7 +38,7 @@
   "revenue": {"weekday": 0, "pages_growth": 3, "pages_new": 3, "min_revenue_usd": 500, "category": "", "max_leads": 10},
   "competition": {"max_rows": 8, "weak_dr": 30, "location_code": 2840},
   "review": {"after_days": 14, "per_day": 5},
-  "usecases": {"per_day": 5, "model": "claude-sonnet-4-6", "benchmark": "gpts", "min_volume": 50, "min_daily": 300, "related": true, "related_geo": "US", "country_trends": true, "country_min_volume": 1000, "country_max": 8},
+  "usecases": {"per_day": 5, "model": "claude-sonnet-4-6", "benchmarks": [{"term": "chatgpt", "category": "brand"}, {"term": "ai image generator", "category": "image"}, {"term": "ai video generator", "category": "video"}, {"term": "text to speech", "category": "voice"}, {"term": "pdf converter", "category": "tool"}, {"term": "canva", "category": "brand"}], "min_volume": 50, "min_daily": 300, "related": true, "related_geo": "US", "country_trends": true, "country_min_volume": 1000, "country_max": 8},
 
   "gsc": {}
 }

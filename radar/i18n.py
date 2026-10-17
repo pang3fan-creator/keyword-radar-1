@@ -127,7 +127,7 @@ T = {
                  "日搜是估算:通用词用它自己的月搜索量沿 Trends 曲线推到现在;名字对比基准词 `{bench}`(按今天这批词反推,约每天 {bench_daily} 次)。"),
     "uc_bench_none": ("Searches a day are estimates from each generic term's own volume. `{bench}` could not be sized today, so names have no estimate.",
                       "日搜是按每个通用词自己的月搜索量估算的。今天没法校准基准词 `{bench}`,所以名字没有估算值。"),
-    "uc_cols": ("| Keyword | Type | Behind | New? | Est. searches/day | Size | Started rising | Peak vs {bench} | Peak day | Last 7 days vs the 7 before | Now | Page one | Decision |",
+    "uc_cols": ("| Keyword | Type | Behind | New? | Est. searches/day | Size | Started rising | Peak vs benchmark | Peak day | Last 7 days vs the 7 before | Now | Page one | Decision |",
                 "| 关键词 | 类型 | 来自 | 新词? | 估算日搜 | 开始上涨 | 峰值 vs {bench} | 峰值日 | 近 7 天比前 7 天 | 现在 | 首页竞争 | 决策 |"),
     "pc_open": ("open", "能进"), "pc_mixed": ("mixed", "一般"), "pc_crowded": ("crowded", "挤满"),
     "pc_weak": ("{n} weak", "{n} 个弱站"), "pc_kd": ("KD {kd}", "KD {kd}"), "pc_ads": ("ads", "有广告"),

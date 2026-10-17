@@ -52,7 +52,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import date, timedelta
 from pathlib import Path
 
-from . import UA, aisa, competition, entity, goanyapi, review, snap
+from . import UA, aisa, benchmarks, competition, entity, goanyapi, review, snap
 
 POSTS_KEPT = 12
 POST_CHARS = 400
@@ -294,8 +294,10 @@ def volumes(phrases: list[str], location_code: int) -> tuple[dict[str, dict], in
     out = {}
     for r in ((data.get("vol") or {}).get("tasks") or [{}])[0].get("result") or []:
         ms = r.get("monthly_searches") or []
-        out[r["keyword"]] = {"volume": int(r.get("search_volume") or 0),
-                             "month": f"{ms[0]['year']}-{ms[0]['month']:02d}" if ms else ""}
+        out[r["keyword"]] = {
+            "volume": int(r.get("search_volume") or 0),
+            "month": f"{ms[0]['year']}-{ms[0]['month']:02d}" if ms else "",
+            "months": [(f"{m['year']}-{m['month']:02d}", int(m.get("search_volume") or 0)) for m in ms]}
     return out, cost
 
 
@@ -396,34 +398,15 @@ def own_per_day(points: list[tuple[date, int]], volume: int, month: str, today: 
     return round(volume / 30 * recent / anchor) if anchor and volume else None
 
 
-def bench_daily(rows: list[dict]) -> float | None:
-    """The benchmark's searches a day, worked back from the terms whose volume is known:
-    in the month of the volume data, a term at a third of the benchmark's level with
-    3,000 searches a day puts the benchmark at 9,000. The median over the terms with
-    at least CALIBRATE_MIN searches a month; Trends is too coarse below that."""
-    found = []
-    for r in rows:
-        pair, month = r.get("_pair") or [], r.get("month")
-        if not month or r.get("volume", 0) < CALIBRATE_MIN:
-            continue
-        term = _mean([v for d, v, _ in pair if _in_month(d, month)])
-        bench = _mean([b for d, _, b in pair if _in_month(d, month)])
-        if term and bench:
-            found.append(r["volume"] / 30 * bench / term)
-    return statistics.median(found) if found else None
-
-
-def size(pair: list[tuple[date, int, int]], today: date, daily: float | None) -> dict:
-    """A term next to the benchmark on one scale: its peak against the benchmark's usual
-    level, and, when the benchmark's size is known, searches a day now."""
-    pair = review.settled(pair, today)
-    level = _mean([b for _, _, b in pair])
-    if not level:
-        return {}
-    window = pair[-WORLD["window"]:]
-    out = {"peak_vs": max(v for _, v, _ in window), "bench_level": round(level, 1)}
-    if daily:
-        out["per_day"] = round(_mean([v for _, v, _ in pair[-RECENT_DAYS:]]) / level * daily)
+def ratios(pairs: dict, today: date) -> dict[str, float]:
+    """A name against each benchmark, averaged over the settled recent days."""
+    out = {}
+    for bench, points in (pairs or {}).items():
+        points = review.settled(points, today)[-RECENT_DAYS:]
+        level = _mean([b for _, _, b in points])
+        value = _mean([n for _, n, _ in points])
+        if level:
+            out[bench] = value / level
     return out
 
 
@@ -453,40 +436,64 @@ def _pairs(task: dict) -> list[tuple[date, int, int]]:
     return rows
 
 
-def fetch_series(keywords: list[str], benchmark: str, today: date) -> tuple[dict[str, dict], int]:
-    """{keyword: {"solo": [(day, value)], "pair": [(day, value, benchmark value)]}}: two Trends lookups each."""
-    window = {"date_from": (today - timedelta(days=TRENDS_DAYS)).isoformat(), "date_to": today.isoformat()}
-    calls = []
-    for i, k in enumerate(keywords):
-        calls.append({"call_id": f"s{i}", "tool": review.TOOL, "arguments": {"body": [{"keywords": [k], **window}]}})
-        calls.append({"call_id": f"p{i}", "tool": review.TOOL, "arguments": {"body": [{"keywords": [k, benchmark], **window}]}})
+def _window(today: date) -> dict:
+    return {"date_from": (today - timedelta(days=TRENDS_DAYS)).isoformat(), "date_to": today.isoformat()}
+
+
+def solo_series(keywords: list[str], today: date) -> tuple[dict[str, list], int]:
+    """Each keyword on its own, for its shape."""
+    calls = [{"call_id": f"s{i}", "tool": review.TOOL, "arguments": {"body": [{"keywords": [k], **_window(today)}]}}
+             for i, k in enumerate(keywords)]
+    if not calls:
+        return {}, 0
     data, cost = aisa.call_all(calls)
     task = lambda cid: ((data.get(cid) or {}).get("tasks") or [{}])[0]  # noqa: E731
-    return {k: {"solo": review._series(task(f"s{i}")), "pair": _pairs(task(f"p{i}"))} for i, k in enumerate(keywords)}, cost
+    return {k: review._series(task(f"s{i}")) for i, k in enumerate(keywords)}, cost
 
 
-def measure(rows: list[dict], series: dict[str, dict], min_daily: int, today: date,
-            country: dict[str, list] | None = None) -> float | None:
-    """Fills each row with its shape, size and decision. Returns the benchmark's calibrated
-    size. A row with a one-country series takes its shape from that (`trend_geo` says so)."""
+def basket_pairs(names: list[str], bench: list[str], today: date) -> tuple[dict[str, dict], int]:
+    """{name: {benchmark: [(day, name value, benchmark value)]}}: one lookup per pair."""
+    calls, ids = [], {}
+    for i, name in enumerate(names):
+        for j, b in enumerate(bench):
+            cid = f"p{i}_{j}"
+            ids[cid] = (name, b)
+            calls.append({"call_id": cid, "tool": review.TOOL,
+                          "arguments": {"body": [{"keywords": [name, b], **_window(today)}]}})
+    if not calls:
+        return {}, 0
+    data, cost = aisa.call_all(calls)
+    out: dict[str, dict] = {}
+    for cid, (name, b) in ids.items():
+        task = ((data.get(cid) or {}).get("tasks") or [{}])[0]
+        out.setdefault(name, {})[b] = _pairs(task)
+    return out, cost
+
+
+def measure(rows: list[dict], solo: dict[str, list], pairs: dict[str, dict], min_daily: int, today: date,
+            dailies: dict[str, int] | None = None, country: dict[str, list] | None = None) -> None:
+    """Fills each row with its shape, size and decision. A name has no volume of its own, so it
+    is sized against the basket; a generic term uses its own Google Ads volume."""
+    dailies = dailies or {}
     for r in rows:
-        r["_pair"] = series.get(r["phrase"], {}).get("pair") or []
-    daily = bench_daily(rows)
-    for r in rows:
-        solo = series.get(r["phrase"], {}).get("solo") or []
         local = (country or {}).get(r["phrase"])
-        s = shape(local, today, COUNTRY) if local else shape(solo, today)
+        s = shape(local, today, COUNTRY) if local else shape(solo.get(r["phrase"]) or [], today)
         if local and not s.get("no_data"):
             r["trend_geo"] = True
         elif local:
-            s = shape(solo, today)
-        z = size(r.pop("_pair"), today, daily)
-        own = own_per_day(solo, r.get("volume", 0), r.get("month", ""), today)
-        if own is not None:
-            z["per_day"] = own      # a term's own volume is a better anchor than the benchmark
-        r["size_status"] = "known" if z.get("per_day") is not None else "unknown"
+            s = shape(solo.get(r["phrase"]) or [], today)
+        z: dict = {}
+        if r.get("kind") == "name":
+            per_day = benchmarks.size(ratios(pairs.get(r["phrase"]) or {}, today), dailies)
+            if per_day is not None:
+                z["per_day"] = per_day
+            r["size_status"] = "known" if per_day is not None else ("uncalibrated" if not dailies else "unknown")
+        else:
+            own = own_per_day(solo.get(r["phrase"]) or [], r.get("volume", 0), r.get("month", ""), today)
+            if own is not None:
+                z["per_day"] = own
+            r["size_status"] = "known" if own is not None else "unknown"
         r.update({**s, **z, "decision": decide(s, z.get("per_day"), min_daily)})
-    return daily
 
 
 def run(cfg: dict, state: Path, names: list[str], repos: dict[str, str], today: date | None = None,
@@ -529,16 +536,22 @@ def run(cfg: dict, state: Path, names: list[str], repos: dict[str, str], today: 
             row["brand"] |= u["brand"]
             if u["source"] == "searched":
                 row["source"] = "searched"
-    bench = c["benchmark"].lower()
+    basket = [b["term"] if isinstance(b, dict) else b for b in c.get("benchmarks") or []]
+    bench = ", ".join(basket) or c.get("benchmark", "")
+    checked = (snap.load(state / "benchmarks.json.gz") or {}).get("terms") or {}
+    dailies = {t: r["daily"] for t, r in checked.items() if r.get("ok") and r.get("daily")}
+    usable = list(dailies)
     vol, c2 = volumes(sorted(proposed), c["location_code"])
     generic = keep(proposed, vol, c)
     measured = generic[:c["trends_max"]]          # the cap saves paid Trends lookups, not rows
     rows = [{"term": n, "phrase": n, "kind": "name", "names": [], "brand": True, "evidence": "",
              "volume_status": volume_status(int((vol.get(n) or {}).get("volume") or 0), c["min_volume"]),
              **vol.get(n, {})} for n in todo] + measured
-    series, c3 = fetch_series([r["phrase"] for r in rows], bench, today)
+    solo, c3 = solo_series([r["phrase"] for r in rows], today)
+    pairs, c3b = basket_pairs([r["phrase"] for r in rows if r["kind"] == "name"], usable, today)
     local, c4, local_errors = country_series(rows, c) if goanyapi.key() and c.get("country_trends", True) else ({}, 0, [])
-    daily = measure(rows, series, c["min_daily"], today, local)
+    measure(rows, solo, pairs, c["min_daily"], today, dailies, local)
+    daily = round(statistics.median(list(dailies.values()))) if dailies else None
     c5, comp_errors = competition.assess(rows, cfg, state) if cfg.get("competition", {}).get("max_rows") else (0, [])
     for r in generic[c["trends_max"]:]:           # kept for the table, not worth a paid lookup
         rows.append({**r, "no_data": True, "size_status": "unknown", "decision": "watch"})
@@ -558,7 +571,8 @@ def run(cfg: dict, state: Path, names: list[str], repos: dict[str, str], today: 
             "posts_error": "; ".join(f"{n}: {e['error']}" for n, e in ev.items() if e.get("error")),
             "related": use_related, "tails": {n: v for n, v in tails.items() if v}, "cosearch": cosearch,
             "related_errors": related_errors, "geo": c["related_geo"], "country_errors": local_errors,
-            "competition_errors": comp_errors, "cost_micros": cost + c0 + c2 + c3 + c4 + c5}
+            "competition_errors": comp_errors, "benchmarks": basket,
+            "cost_micros": cost + c0 + c2 + c3 + c3b + c4 + c5}
 
 
 READ_KINDS = {"x", "hf", "breakout", "newsite", "revenue"}

@@ -10,6 +10,9 @@ from pathlib import Path
 
 from . import entity, i18n, terms
 
+# A basket, not one keyword: a single benchmark's own swing would resize every name (docs/05 §4.3 C).
+BENCHMARKS = [{"term": "chatgpt", "category": "brand"}, {"term": "ai image generator", "category": "image"}, {"term": "ai video generator", "category": "video"}, {"term": "text to speech", "category": "voice"}, {"term": "pdf converter", "category": "tool"}, {"term": "canva", "category": "brand"}]
+
 DEFAULTS = {
     "lang": "en",
     "x_accounts": {"labs": [], "bloggers": []},
@@ -22,7 +25,7 @@ DEFAULTS = {
     "new_sites": {"queries": {"ai": "%ai%"}, "weekday": 0, "window_days": 90, "min_etv": 1000, "min_keywords": 20},
     "review": {"after_days": 14, "per_day": 5},
     "usecases": {"per_day": 5, "model": "claude-sonnet-4-6", "min_volume": 50, "trends_max": 10, "recheck_days": 3,
-                 "location_code": 2840, "benchmark": "gpts", "min_daily": 300, "related": True, "related_geo": "US",
+                 "location_code": 2840, "benchmarks": BENCHMARKS, "min_daily": 300, "related": True, "related_geo": "US",
                  "country_trends": True, "country_min_volume": 1000, "country_max": 8},
     "competition": {"max_rows": 8, "weak_dr": 30, "location_code": 2840},
     "revenue": {"weekday": 0, "pages_growth": 3, "pages_new": 3, "min_revenue_usd": 500, "category": "", "max_leads": 10},

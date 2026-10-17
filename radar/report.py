@@ -347,7 +347,7 @@ def keyword_table(cfg: dict, uc: dict) -> list[str]:
                 known=counts.get("known", 0), below=counts.get("below_threshold", 0), unknown=counts.get("unknown", 0),
                 min=c["min_volume"], month=uc["volume_month"] or "?"),
               t("uc_bench", bench=uc["benchmark"], bench_daily=uc["bench_daily"]) if uc.get("bench_daily") else t("uc_bench_none", bench=uc["benchmark"]), "",
-              t("uc_cols", bench=uc["benchmark"]), "|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
+              t("uc_cols"), "|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
     for r in uc["rows"]:
         generic = r["kind"] == "generic"
         none = r.get("no_data")
