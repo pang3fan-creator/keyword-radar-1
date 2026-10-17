@@ -1121,3 +1121,12 @@ def test_the_report_says_when_one_signal_took_every_visible_slot():
     lines = report._status_lines(blocks, {}, lead)
 
     assert any("holds 20/20" in line for line in lines), lines
+
+
+def test_the_keyword_header_and_its_separator_agree_in_every_language():
+    for lang in ("en", "zh"):
+        i18n.set_lang(lang)
+        header, sep = i18n.t("uc_cols"), "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"
+        assert header.format()                         # no placeholder left to fill
+        assert header.count("|") == sep.count("|")     # same number of columns
+    i18n.set_lang("en")

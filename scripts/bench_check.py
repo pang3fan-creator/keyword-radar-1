@@ -9,6 +9,7 @@ Fewer than two usable terms leaves every nameless name `uncalibrated` rather tha
 this before trusting a size, and re-run it monthly (the volume data is monthly anyway).
 """
 import argparse
+import os
 import sys
 from datetime import date
 from pathlib import Path
@@ -16,7 +17,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from radar import benchmarks, config, snap, usecases
+from radar import benchmarks, config, env, snap, usecases
 
 
 def main() -> int:
@@ -28,6 +29,8 @@ def main() -> int:
     args = ap.parse_args()
     args.apply = args.apply and not args.dry_run
 
+    if not os.environ.get("RADAR_SKIP_ENV_FILE"):
+        env.load(ROOT / ".env")
     cfg = config.load(args.config)
     c = cfg["usecases"]
     terms = [b["term"] if isinstance(b, dict) else b for b in c["benchmarks"]]

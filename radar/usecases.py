@@ -545,6 +545,7 @@ def run(cfg: dict, state: Path, names: list[str], repos: dict[str, str], today: 
     checked = (snap.load(state / "benchmarks.json.gz") or {}).get("terms") or {}
     dailies = {t: r["daily"] for t, r in checked.items() if r.get("ok") and r.get("daily")}
     usable = list(dailies)
+    dropped = {t: r for t, r in checked.items() if not (r.get("ok") and r.get("daily"))}
     vol, c2 = volumes(sorted(proposed), c["location_code"])
     generic = keep(proposed, vol, c)
     measured = generic[:c["trends_max"]]          # the cap saves paid Trends lookups, not rows
@@ -578,6 +579,7 @@ def run(cfg: dict, state: Path, names: list[str], repos: dict[str, str], today: 
             "related": use_related, "tails": {n: v for n, v in tails.items() if v}, "cosearch": cosearch,
             "related_errors": related_errors, "geo": c["related_geo"], "country_errors": local_errors,
             "competition_errors": comp_errors, "benchmarks": basket,
+            "bench_usable": usable, "bench_dropped": dropped,
             "cost_micros": cost + c0 + c2 + c3 + c3b + c4 + c5}
 
 

@@ -30,6 +30,8 @@ radar/                 runtime code (upstream layout; keep it recognizable)
   judge.py             LLM name judge
   entity.py            one term per thing: normalize, merge, canonical
   select.py            signal order and lane; the quota that picks the visible names
+  benchmarks.py        the basket that sizes a name, and the checks a benchmark must pass
+  leading.py           the plain rule that decides when a name has no size
   usecases.py          evidence -> generic terms -> keyword table
   competition.py       SERP / KD / DR page-one check
   review.py            14-day Trends review
@@ -67,6 +69,7 @@ Python 3.10 or newer. The runtime uses only the standard library. The project ve
 .venv/bin/python -m radar keywords "name" --json     # on-demand keyword table
 .venv/bin/python -m radar leads --days 7             # free; inspect stored leads
 .venv/bin/python scripts/merge_terms.py --dry-run    # one-off: fold twin terms, mark URL echoes
+.venv/bin/python scripts/bench_check.py --dry-run    # monthly: check the basket, cache its daily size
 ```
 
 A full `daily` costs about **$0.34** and takes 10–15 minutes with the current 35 X accounts. `keywords` costs about $0.05 per name plus $0.09 per call. State the cost before a paid run, and do not run `daily` twice in a row (the second run reports only the delta).
@@ -120,7 +123,7 @@ M1 completed on 2026-10-17 (`516c6a2..be2d9f7`):
 
 - `radar/entity.py`: one term per thing. 100-pair calibration set (50 merge, 50 do not, 10 pairs taken from the real lead table); an extra token must be a maker, a format, a version or a size, never a variant.
 - `radar/select.py`: the visible slots alternate across signals. On the M0 candidates the top 20 went from 20 X to x 6 / hf 6 / breakout 3 / sitemap 5, and the five names read became `deepseek v4.1 flash 1017`, `figcraft`, `gpt 6 astra pro`, `beam 1.0`, `git ai`.
-- `known_terms` match whole tokens; a lead is `new` when `first_seen` is today (the keyword table's own `新词?` column still reads the Trends baseline; M2).
+- `known_terms` match whole tokens; a lead is `new` when `first_seen` is today (the keyword table's own `新词?` column still reads the Trends baseline).
 - `store.py` reads and writes `terms` / `term_signals` / `reviews`, and `connect()` creates `SCHEMA_NEXT`. `leads` keeps the migrated history and is no longer written.
 - Migration: 75 leads became 75 terms, 76 signals and 2 runs; the pre-migration DB is at `state/backup-2026-10-17-pre-migration/`.
 
@@ -139,7 +142,20 @@ Still open after M1:
 - The visible table and the judge still work per surface form; entity resolution runs before storage and before the read, not before the report rows.
 - `record()` compares each group against every stored term (`same_entity` is O(terms) per group). Fine at 87 rows, revisit before `terms` reaches a few thousand.
 
-Next milestone (M2): leading indicators, no hard `min_volume` gate, the benchmark basket and the measurement-integrity golden set.
+M2 completed on 2026-10-17 (`57ff687`, `01dda93`, `211d602`):
+
+- `min_volume` is a label, not a gate: every relevant phrase reaches the table with `volume_status` known / below_threshold / unknown, and `trends_max` now caps paid lookups instead of rows.
+- `tests/fixtures/golden_30.json` pins 30 canned words against the thresholds and the decision rules; a day of all watch/skip still passes, because the output count is a reference.
+- `radar/benchmarks.py` sizes names against a basket of six, after a quarter-slope, month-over-month and spike check. `scripts/bench_check.py --apply` refreshes the cache monthly; on 2026-10-17 it kept 5 of 6 (`pdf converter` out, month over month +124%) and cost $0.097.
+- `radar/leading.py`: when the basket cannot size a name, two or more signals plus a name score of 0.8 or better makes it a priority; the table shows both facts.
+- New columns Size and Leading; the benchmark line names what was left out and why.
+- Validation: the 2026-10-17 `daily` read no names (the only candidate scored 0.70), so `keywords "deepseek v4.1 flash 1017"` was run instead and produced a sized row. The daily itself cost $0.099 and wrote its `runs` row.
+
+Still open after M2:
+
+- The benchmark cache is refreshed by hand (`scripts/bench_check.py`); no scheduler in v1.
+- `keywords` table in SQLite still has no writer.
+- The keyword table's `新词?` column still reads the Trends baseline, not `first_seen`.
 
 ## Before you hand work over
 
