@@ -94,3 +94,17 @@ def test_recent_sources_are_only_x_and_hf(tmp_path):
     store.record(conn, [_lead("qwen3.9", ["x"], named=0.9), _lead("strata", ["breakout"])], DAY)
 
     assert [r["term"] for r in store.recent_sources(conn, DAY)] == ["qwen3.9"]
+
+
+def test_a_new_spelling_updates_the_term_already_stored(tmp_path):
+    conn = store.connect(tmp_path)
+    conn.execute("INSERT INTO terms (canonical, first_seen, last_seen, aliases)"
+                 " VALUES ('deepseek-v4.1-flash-1017', '2026-10-16', '2026-10-16', '[]')")
+    conn.commit()
+
+    store.record(conn, [_lead("deepseek v4.1 flash 1017", ["x"])], DAY)
+
+    assert conn.execute("SELECT count(*) FROM terms").fetchone()[0] == 1
+    first, last, aliases = conn.execute("SELECT first_seen, last_seen, aliases FROM terms").fetchone()
+    assert (first, last) == ("2026-10-16", "2026-10-17")
+    assert json.loads(aliases) == ["deepseek v4.1 flash 1017"]

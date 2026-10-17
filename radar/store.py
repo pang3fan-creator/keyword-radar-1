@@ -132,6 +132,11 @@ def record(conn: sqlite3.Connection, rows: list[dict], today: date | None = None
     day = (today or date.today()).isoformat()
     prepared = [{"term": r["term"], "day": day, "source": (r.get("kinds") or [""])[0], "row": r}
                 for r in rows]
+    # Look a term up by its normal form, so a spelling that only differs by separators does not
+    # add a second row for a name the migrated history already knows.
+    stored = {entity.normalize(canonical): (tid, aliases, score)
+              for tid, canonical, aliases, score in
+              conn.execute("SELECT id, canonical, aliases, name_score FROM terms")}
     for group in entity.cluster(prepared):
         members = [m["row"] for m in group["rows"]]
         evidence: dict[str, str | None] = {}
@@ -143,8 +148,7 @@ def record(conn: sqlite3.Connection, rows: list[dict], today: date | None = None
         named = next((m["named"] for m in reversed(members) if m.get("named") is not None), None)
         aliases = sorted(set(forms))
 
-        old = conn.execute("SELECT id, aliases, name_score FROM terms WHERE canonical = ?",
-                           (group["canonical"],)).fetchone()
+        old = stored.get(entity.normalize(group["canonical"]))
         if old is None:
             cur = conn.execute(
                 "INSERT INTO terms (canonical, aliases, first_seen, last_seen, name_score, window,"
