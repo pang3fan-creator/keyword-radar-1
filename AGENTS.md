@@ -201,7 +201,7 @@ Still open after M3:
 - `ph.name()` reads only the subtitle's first word, and `SUB` (the/for/with/...) drops it when it is a function word: "Notion: for your agents" would come back as `notion` alone. M4 left it as it was; M5 decides between shrinking `SUB` to the articles and a brand+feature pair.
 - PH name extraction has no negative fixture variants (a "by <maker>" suffix, a two-colon title); the 40-title fixture covers HN and the official feeds only.
 
-M4 completed on 2026-10-17 (`058479a`):
+M4 completed on 2026-10-17 (`058479a`, `70c5c47`):
 
 - `radar/autocomplete.py`: seeds = `slow.objects` (20) x `slow.actions` (8); any list fits. One free request per seed to Google's suggest endpoint. A candidate must carry the seed's category word (a plural counts), have 2-6 words, not open with a question word, and not be a `known_terms` entry. A failed seed is a line; a malformed answer is an error, not an empty list. The first run read 160 seeds into 855 candidates.
 - `radar/slow.py`: deals the volume cap across categories (`spread`), then walks the fast lane's own chain -- `usecases.volumes`, `solo_series`, `measure`, `competition.assess` -- and balances the table (<=8 per category, <=3 near-copies).
@@ -217,6 +217,7 @@ Still open after M4:
 - The weekly run is manual; no scheduler in v1, and `sources` does not run the slow lane.
 - The seed list is 20 x 8; the 115 roots and 63 seeds are not in the repository, so a different list is a config edit.
 - The tuned weekly cost (~$0.19) is an estimate until the next paid run prints its split.
+- `merge_terms()` does not carry `window`: a fast twin folded into an older slow row keeps `slow` and leaves the review pool. No such merge has happened yet; fix it in M5 (one line: `fast` if either side is fast).
 - `ph.name()`'s subtitle edge was left as it was; M5 decides it.
 
 ## Before you hand work over
