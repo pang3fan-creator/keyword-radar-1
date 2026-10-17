@@ -18,6 +18,7 @@ Signals:
   ⑤ review    leads from 14 days ago checked in Google Trends; hit rate per signal (AIsa)
   usecases    the generic terms behind today's names, sized against a benchmark keyword (AIsa)
 
+  python -m radar slow     [--out slow.md] [--free]   the weekly combo-word list (slow lane)
   python -m radar keywords "name one" "name two" [--repo "name one=owner/repo"] [--json]
   python -m radar leads    [--days 7] [--json]
   python -m radar pains    "keyword" [--extension ID] [--json]   what people complain about for a kind of tool
@@ -26,6 +27,11 @@ Signals:
 `keywords` builds the keyword table for names you give it, now (about $0.05 a name plus
 $0.09 a call for the volume lookup). `leads` lists what the radar has kept, with the
 review's verdicts and the hit rate per signal; it costs nothing.
+
+`slow` is the weekly combo-word list: seeds from config, Autocomplete for free, then the
+fast lane's own chain (volume, Trends shape, page one) on the biggest. About $0.15 a run;
+`--free` skips every paid step and prints the candidates only. Its words never take a
+name slot or one of the five reads.
 
 `sources` runs only ① (they change by the hour) and writes a report only when there is a
 name or an error. `daily` runs everything; give it `--skip x,hf` when `sources` runs
@@ -44,7 +50,7 @@ from datetime import date, datetime
 from pathlib import Path
 
 from . import (asks, breakout, config, env, gsc, hn, new_sites, notify, official, pains, ph, report, review,
-               revenue, sitemaps, sources, store, usecases)
+               revenue, sitemaps, slow, sources, store, usecases)
 from .i18n import t
 
 SKIPPABLE = {"x", "hf", "breakout", "sitemaps", "newsites", "revenue", "asks", "gsc", "review", "judge", "usecases",
@@ -151,6 +157,22 @@ def kept_leads(state: Path, days: int) -> dict:
     return {"leads": store.leads(conn, days), "hit_rates": store.summary(conn)}
 
 
+def cmd_slow(args, cfg: dict, state: Path) -> int:
+    started = datetime.now().isoformat(timespec="seconds")
+    result = slow.run(cfg, state, paid=not args.free)
+    text = report.slow(cfg, result)
+    if args.out:
+        Path(args.out).write_text(text)
+        Path(args.out).with_suffix(".json").write_text(json.dumps(result, ensure_ascii=False, indent=1, default=str))
+    print(text)
+    conn = store.connect(state)
+    run(lambda: {"run": store.record_run(
+        conn, "slow", started, datetime.now().isoformat(timespec="seconds"), result["cost_micros"],
+        {"rows": len(result["rows"]), "candidates": result["candidates"], "paid": result["paid"]},
+        [*result["errors"], *result["paid_errors"]])})
+    return 0
+
+
 def cmd_keywords(args, cfg: dict, state: Path) -> int:
     started = datetime.now().isoformat(timespec="seconds")
     repos = dict(r.split("=", 1) for r in args.repo)
@@ -213,7 +235,7 @@ def main(argv: list[str] | None = None) -> int:
         return serve_mcp()
     prog = "python -m radar" if __package__ == "radar" else "new-term-radar"  # installed, the package has another name
     p = argparse.ArgumentParser(prog=prog, description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("command", choices=["daily", "sources", "keywords", "leads", "pains"])
+    p.add_argument("command", choices=["daily", "sources", "slow", "keywords", "leads", "pains"])
     p.add_argument("names", nargs="*", help="for `keywords`: the names to read")
     p.add_argument("--repo", action="append", default=[], metavar="NAME=OWNER/REPO", help="for `keywords`: a name's GitHub repository")
     p.add_argument("--days", type=int, default=7, help="for `leads`: how far back")
@@ -227,6 +249,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--asks", action="store_true", help="run the weekly Reddit asks signal today")
     p.add_argument("--extension", action="append", default=[], metavar="ID", help="for `pains`: a Chrome extension to read the reviews of")
     p.add_argument("--mail", action="store_true", help="mail the report (see radar/notify.py)")
+    p.add_argument("--free", action="store_true", help="for `slow`: skip every paid step and list the candidates")
     args = p.parse_args(argv)
     args.skip = {s for s in args.skip.split(",") if s}
     unknown = args.skip - SKIPPABLE
@@ -245,6 +268,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_keywords(args, cfg, state)
     if args.command == "pains":
         return cmd_pains(args, cfg)
+    if args.command == "slow":
+        return cmd_slow(args, cfg, state)
     return cmd_sources(args, cfg, state) if args.command == "sources" else cmd_daily(args, cfg, state)
 
 

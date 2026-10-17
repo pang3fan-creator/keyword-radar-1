@@ -24,6 +24,15 @@ DEFAULTS = {
     "breakout": {"window_days": 14, "min_stars": 300, "velocity_min": 200, "delta_min": 400},
     "hn": {"min_points": 30, "top": 25, "lookback_hours": 30},
     "ph": {"min_votes": 50, "top": 25, "lookback_hours": 26, "topic": "artificial-intelligence"},
+    # The slow lane: object x action seeds, expanded by Autocomplete, measured by the same chain.
+    "slow": {"objects": ["video", "image", "photo", "headshot", "avatar", "logo", "music", "voice", "song",
+                         "tattoo", "interior", "product photo", "background", "watermark", "subtitle", "pdf",
+                         "resume", "essay", "code", "website"],
+             "actions": ["generator", "editor", "remover", "upscaler", "converter", "detector", "summarizer",
+                         "translator"],
+             "template": "ai {object} {action}", "max_queries": 160, "delay": 0.2, "max_volumes": 120,
+             "trends_max": 25, "page_one": 5, "max_rows": 30, "per_category": 8, "synonyms": 3,
+             "min_volume": 50, "min_daily": 300},
     # Six feeds that answered on 2026-10-17. Anthropic and Meta AI publish no feed; see docs/05 §3.1.
     "official": {"feeds": {
         "openai": "https://openai.com/news/rss.xml",

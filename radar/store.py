@@ -179,29 +179,32 @@ def record(conn: sqlite3.Connection, rows: list[dict], today: date | None = None
 
         # A twin stored under another spelling is the same thing: fold it in instead of
         # adding a row that would be reviewed, and paid for, on its own.
-        existing = [(tid, canonical_, aliases, score, first)
-                    for tid, canonical_, aliases, score, first in
-                    conn.execute("SELECT id, canonical, aliases, name_score, first_seen FROM terms")]
+        lane = select.lane(evidence)
+        existing = [(tid, canonical_, aliases, score, first, window)
+                    for tid, canonical_, aliases, score, first, window in
+                    conn.execute("SELECT id, canonical, aliases, name_score, first_seen, window FROM terms")]
         matches = [e for e in existing if e[1] == canonical or entity.same_entity(canonical, e[1])]
         if matches:
             keep = min(matches, key=lambda e: (e[4], e[0]))
             for other in matches:
                 if other[0] != keep[0]:
                     merge_terms(conn, keep[0], other[0])
-            kept_aliases, kept_score = conn.execute(
-                "SELECT aliases, name_score FROM terms WHERE id = ?", (keep[0],)).fetchone()
+            kept_aliases, kept_score, kept_window = conn.execute(
+                "SELECT aliases, name_score, window FROM terms WHERE id = ?", (keep[0],)).fetchone()
             aliases = sorted(set(json.loads(kept_aliases)) | set(forms) | {m[1] for m in matches})
-            conn.execute("UPDATE terms SET last_seen = ?, aliases = ?, name_score = ?, updated_at = ?"
+            # A slow word the fast lane names is a fast lead again: it becomes reviewable.
+            window = "fast" if "fast" in (kept_window, lane) else (kept_window or lane)
+            conn.execute("UPDATE terms SET last_seen = ?, aliases = ?, name_score = ?, window = ?, updated_at = ?"
                          " WHERE id = ?",
                          (day, json.dumps(aliases, ensure_ascii=False),
-                          named if named is not None else kept_score, day, keep[0]))
+                          named if named is not None else kept_score, window, day, keep[0]))
             term_id = keep[0]
         else:
             cur = conn.execute(
                 "INSERT INTO terms (canonical, aliases, first_seen, last_seen, name_score, window,"
                 " status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
                 (canonical, json.dumps(sorted(set(forms)), ensure_ascii=False), day, day, named,
-                 select.lane(evidence), "new", day, day))
+                 lane, "new", day, day))
             term_id = cur.lastrowid
         for kind, note in evidence.items():
             if not conn.execute("SELECT 1 FROM term_signals WHERE term_id = ? AND source = ?",
@@ -293,7 +296,7 @@ def due(conn: sqlite3.Connection, today: date, after_days: int, limit: int) -> l
     cutoff = (today - timedelta(days=after_days)).isoformat()
     rows = conn.execute(
         "SELECT canonical, first_seen, aliases FROM terms t WHERE first_seen <= ?"
-        " AND COALESCE(t.status, 'new') != 'echo' AND NOT EXISTS"
+        " AND COALESCE(t.status, 'new') != 'echo' AND COALESCE(t.window, 'fast') != 'slow' AND NOT EXISTS"
         " (SELECT 1 FROM reviews r WHERE r.term_id = t.id AND r.days = ?)"
         " ORDER BY first_seen, canonical LIMIT ?", (cutoff, REVIEW_DAYS, limit)).fetchall()
     return [(t, date.fromisoformat(f), json.loads(a)) for t, f, a in rows]
@@ -349,7 +352,7 @@ def summary(conn: sqlite3.Connection, today: date | None = None) -> dict:
         leads = s.pop("leads")
         s["median_lead"] = statistics.median(leads) if leads else None
     pending = conn.execute("SELECT count(*) FROM terms t WHERE COALESCE(t.status, 'new') != 'echo'"
-                           " AND NOT EXISTS (SELECT 1 FROM reviews r WHERE r.term_id = t.id AND r.days = ?)",
+                           " AND COALESCE(t.window, 'fast') != 'slow' AND NOT EXISTS (SELECT 1 FROM reviews r WHERE r.term_id = t.id AND r.days = ?)",
                            (REVIEW_DAYS,)).fetchone()[0]
     return {"by_signal": by, "pending": pending, "window_days": SUMMARY_WINDOW}
 

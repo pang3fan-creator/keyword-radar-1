@@ -5,6 +5,8 @@ gsc_client.json
 report.md
 report.json
 sources.md
+slow.md
+slow.json
 __pycache__/
 .pytest_cache/
 .venv/

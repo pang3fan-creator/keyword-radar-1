@@ -454,6 +454,48 @@ def posts_lines(rows: list[dict]) -> list[str]:
     return lines
 
 
+def slow(cfg: dict, result: dict) -> str:
+    """The weekly combo-word list: the candidates that were measured, never a name slot."""
+    cost = f"${result.get('cost_micros', 0) / 1e6:.3f}"
+    lines = [t("slow_title"), "", t("slow_intro", seeds=result["seeds"], candidates=result["candidates"],
+                                    rows=len(result["rows"]), cost=cost)]
+    if not result.get("paid"):
+        lines += ["", t("slow_free")]
+    rows = result["rows"]
+    if not rows:
+        why = "; ".join(result.get("errors", [])[:2]) or t("no_new_names")
+        return "\n".join(lines + ["", t("slow_none", why=why), "", t("cost", cost=cost)]) + "\n"
+    lines += ["", t("slow_cols"), "|---|---|---|---|---|---|---|---|"]
+    for r in rows:
+        now = r.get("now")
+        decision = r.get("decision")
+        lines.append(f"| **{r['term']}** | {', '.join(r.get('objects') or []) or t('dash')} | "
+                     f"{t('uc_yes') if r.get('fresh') else t('uc_no')} | {r.get('volume') or 0:,} | "
+                     f"{r.get('per_day') if r.get('per_day') is not None else t('dash')} | "
+                     f"{t('uc_now_' + now) if now else t('dash')} | {_page_one(r.get('competition'))} | "
+                     f"{t('uc_' + decision) if decision else t('dash')} |")
+    lines += ["", t("slow_rules", min=f"{cfg['slow']['min_daily']:,}")]
+    status = []
+    for err in result.get("errors", [])[:5]:
+        status.append(t("slow_failed", what=err))
+    for err in result.get("paid_errors", [])[:5]:
+        status.append(t("slow_failed", what=err))
+    asked, trends = result.get("asked_volumes", 0), result.get("asked_trends", 0)
+    if result.get("candidates") and asked and result["candidates"] > asked:
+        status.append(t("slow_caps", n=asked, m=result["candidates"]))
+    if asked and trends and trends < asked:
+        status.append(t("slow_caps_trends", n=trends, m=asked))
+    spend = result.get("spend") or {}
+    if spend:
+        status.append(t("slow_spend", volumes=f"${spend.get('volumes', 0) / 1e6:.3f}",
+                        trends=f"${spend.get('trends', 0) / 1e6:.3f}",
+                        page_one=f"${spend.get('page_one', 0) / 1e6:.3f}"))
+    if status:
+        lines += ["", t("slow_status_h"), ""] + status
+    lines.append(t("cost", cost=cost))
+    return "\n".join(lines) + "\n"
+
+
 def sources(cfg: dict, lead: list[dict], b: dict[str, dict], extra: dict[str, dict]) -> str:
     lines = [t("sources_title"), "", t("sources_cols"), "|---|---|---|---|---|"]
     top = named(cfg, lead)[:SHOWN]

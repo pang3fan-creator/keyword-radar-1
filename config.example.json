@@ -36,6 +36,7 @@
   "breakout": {"window_days": 14, "min_stars": 300, "velocity_min": 200, "delta_min": 400},
   "hn": {"min_points": 30, "top": 25, "lookback_hours": 30},
   "ph": {"min_votes": 50, "top": 25, "lookback_hours": 26, "topic": "artificial-intelligence"},
+  "slow": {"objects": ["video", "image", "photo", "headshot", "avatar", "logo", "music", "voice", "song", "tattoo", "interior", "product photo", "background", "watermark", "subtitle", "pdf", "resume", "essay", "code", "website"], "actions": ["generator", "editor", "remover", "upscaler", "converter", "detector", "summarizer", "translator"], "template": "ai {object} {action}", "max_queries": 160, "delay": 0.2, "max_volumes": 120, "trends_max": 25, "page_one": 5, "max_rows": 30, "per_category": 8, "synonyms": 3, "min_volume": 50, "min_daily": 300},
   "official": {"feeds": {"openai": "https://openai.com/news/rss.xml", "google-ai": "https://blog.google/technology/ai/rss/", "deepmind": "https://deepmind.google/blog/rss.xml", "huggingface": "https://huggingface.co/blog/feed.xml", "mistral": "https://mistral.ai/rss.xml", "microsoft-research": "https://www.microsoft.com/en-us/research/feed/"}, "max_per_run": 10, "lookback_days": 7},
   "new_sites": {"queries": {"ai": "%ai%", "video": "%video%"}, "weekday": 0},
   "revenue": {"weekday": 0, "pages_growth": 3, "pages_new": 3, "min_revenue_usd": 500, "category": "", "max_leads": 10},
