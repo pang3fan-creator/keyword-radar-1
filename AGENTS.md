@@ -142,7 +142,7 @@ Still open after M1:
 - The visible table and the judge still work per surface form; entity resolution runs before storage and before the read, not before the report rows.
 - `record()` compares each group against every stored term (`same_entity` is O(terms) per group). Fine at 87 rows, revisit before `terms` reaches a few thousand.
 
-M2 completed on 2026-10-17 (`57ff687`, `01dda93`, `211d602`):
+M2 completed on 2026-10-17 (`57ff687`, `01dda93`, `211d602`, `577f30a`, `3a7ec1d`):
 
 - `min_volume` is a label, not a gate: every relevant phrase reaches the table with `volume_status` known / below_threshold / unknown, and `trends_max` now caps paid lookups instead of rows.
 - `tests/fixtures/golden_30.json` pins 30 canned words against the thresholds and the decision rules; a day of all watch/skip still passes, because the output count is a reference.
@@ -157,6 +157,7 @@ Still open after M2:
 - The benchmark cache is refreshed by hand (`scripts/bench_check.py`); no scheduler in v1.
 - `keywords` table in SQLite still has no writer.
 - The keyword table's `新词?` column still reads the Trends baseline, not `first_seen`.
+- `store.signals_for()` matches the exact canonical only: a name typed as one of its aliases comes back with no signals, so the leading column stays empty for it (M3).
 
 ## Before you hand work over
 
