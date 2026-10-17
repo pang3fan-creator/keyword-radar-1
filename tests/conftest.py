@@ -2,7 +2,7 @@ import copy
 
 import pytest
 
-from radar import aisa, config, goanyapi, i18n
+from radar import aisa, config, goanyapi, hn, i18n, official
 
 
 @pytest.fixture(autouse=True)
@@ -14,6 +14,11 @@ def english(monkeypatch):
     def no_network(*a, **k):
         raise goanyapi.GoAnyError("no network in tests")
     monkeypatch.setattr(goanyapi, "call", no_network)
+
+    def no_free_fetch(*a, **k):     # HN and the official feeds are free, but still not for a test
+        raise OSError("no network in tests")
+    monkeypatch.setattr(hn, "_get", no_free_fetch)
+    monkeypatch.setattr(official, "_get", no_free_fetch)
 
     def no_paid_calls(*a, **k):       # a key on the machine must never turn a test into a paid call
         raise aisa.AisaError("no network in tests")

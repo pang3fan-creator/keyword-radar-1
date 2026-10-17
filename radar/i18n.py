@@ -59,9 +59,12 @@ T = {
     "note_site": ("New site {domain} (registered {created}, ~{etv} visits/mo, {keywords} ranking keywords)",
                   "新站 {domain}(注册 {created},约 {etv} 访问/月,{keywords} 个排名词)"),
     "note_surge": ("{label}: {n} places (×{lift})", "{label} {n} 处 (×{lift})"),
+    "note_hn": ("HN: {points} points, {comments} comments", "HN {points} 分,{comments} 条评论"),
+    "note_official": ("{feed}: a launch post", "{feed}:发布公告"),
     # signal labels, earliest first
     "kind_x": ("① X", "① X"), "kind_hf": ("① HF", "① HF"), "kind_breakout": ("② breakout", "② 爆发"),
     "kind_sitemap": ("③ sitemaps", "③ 竞品"), "kind_newsite": ("③ new site", "③ 新站"), "kind_watch": ("watch", "观察词"),
+    "kind_official": ("⑧ official", "⑧ 官方"), "kind_hn": ("⑨ HN", "⑨ HN"),
     # daily report
     "title": ("## New-term radar", "## 新词雷达"),
     "leads_h": ("### Candidate new terms (visible slots taken in turn by signal; terms you already cover are marked)",
@@ -114,6 +117,10 @@ T = {
     "st_site_ok": ("{urls} URLs, {new} new", "{urls} 个网址,新增 {new}"),
     "st_site_first": ("first run: snapshot built", "首次运行,只建快照"),
     "st_sitemaps": ("- ③ sitemaps: {state}", "- ③ 竞品:{state}"),
+    "st_source": ("- {label}: {state}", "- {label}:{state}"),
+    "st_source_ok": ("{n} read, {found} new", "读 {n} 条,新增 {found}"),
+    "st_ran": ("ran", "已运行"),
+    "st_failed": (", failed: {names}", ",失败:{names}"),
     "st_record": ("- saving leads: {state}", "- 记录候选词:{state}"),
     "st_judge": ("- name judge: {state}", "- 名字判断:{state}"),
     "cost": ("- AIsa data spend this run: {cost} (the name judge's tokens are billed apart)", "- 本次 AIsa 数据花费:{cost}(名字判断的模型调用另计)"),

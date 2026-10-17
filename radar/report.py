@@ -4,13 +4,16 @@ from __future__ import annotations
 import re
 
 from . import opportunity, config, judge, select, usecases
-from .i18n import t
+from .i18n import T, t
 
 SHOWN = 20
 OTHER_TERMS = 15
 POSTS_SHOWN = 3   # posts quoted in full per term
 # signal key -> label key, in the order of how early the signal comes
 KINDS = select.EARLY
+# Signals with a line of their own in the data-status section. Everything else in the
+# run's blocks gets the generic line, so a source added without one cannot stay silent.
+DRAWN = {"x", "hf", "breakout", "sitemap", "revenue", "ask"}
 
 
 def leads(cfg: dict, blocks: dict[str, dict]) -> tuple[list[dict], dict]:
@@ -224,6 +227,24 @@ def _review_lines(cfg: dict, rev: dict, summ: dict) -> list[str]:
     return lines
 
 
+def _source_line(kind: str, block: dict) -> str:
+    """One line for a source without a bespoke one: how much it read, how many names it
+    found, and the feeds that failed. An unlabelled kind still shows up -- a source that
+    ran and says nothing is the bug this line exists to prevent."""
+    if block.get("skipped"):
+        state = t("skipped")
+    elif block.get("error"):
+        state = block["error"]
+    elif block.get("read") is None:
+        state = t("st_ran")
+    else:
+        state = t("st_source_ok", n=block["read"], found=block.get("found", 0))
+    if block.get("failed"):
+        state += t("st_failed", names=", ".join(block["failed"]))
+    label = t(f"kind_{kind}") if f"kind_{kind}" in T else kind
+    return t("st_source", label=label, state=state)
+
+
 def _status_lines(b: dict[str, dict], extra: dict[str, dict], lead: list[dict]) -> list[str]:
     x, hf, bo, sm = b["x"], b["hf"], b["breakout"], b["sitemap"]
     lines = ["", t("status_h"), ""]
@@ -250,6 +271,11 @@ def _status_lines(b: dict[str, dict], extra: dict[str, dict], lead: list[dict]) 
         lines.append(t("st_site", site=site, state=state))
     if sm.get("error"):
         lines.append(t("st_sitemaps", state=sm["error"]))
+    elif sm.get("skipped"):
+        lines.append(t("st_sitemaps", state=t("skipped")))
+    for kind, block in b.items():
+        if kind not in DRAWN:
+            lines.append(_source_line(kind, block))
     for key, label in (("judge", "st_judge"), ("record", "st_record")):
         if extra.get(key, {}).get("error"):
             lines.append(t(label, state=extra[key]["error"]))

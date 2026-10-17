@@ -761,6 +761,14 @@ def test_only_things_are_read_for_generic_terms_not_words_that_surged():
     assert usecases.names_to_read(today, recent) == ["photocraft", "hailuo", "qwen image 2.1"]
 
 
+def test_a_name_an_official_blog_or_show_hn_found_is_worth_reading():
+    today = [{"term": "gemini 4 argon", "kinds": ["official"], "named": 0.9},
+             {"term": "fakeipedia", "kinds": ["hn"], "named": 0.85},
+             {"term": "kr.co.klisten.api", "kinds": ["sitemap"], "named": 0.9}]
+
+    assert usecases.names_to_read(today, []) == ["gemini 4 argon", "fakeipedia"]
+
+
 def test_two_writings_of_one_name_are_read_once():
     today = [{"term": "deepseek-v4.1-flash-1017", "kinds": ["x"], "named": 1.0},
              {"term": "deepseek v4.1 flash 1017", "kinds": ["hf"], "named": 0.95},

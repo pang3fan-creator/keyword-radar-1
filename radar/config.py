@@ -22,6 +22,16 @@ DEFAULTS = {
     "stop_words": [],
     "judge": {"model": "gpt-4.1-mini", "min_score": 0.5},
     "breakout": {"window_days": 14, "min_stars": 300, "velocity_min": 200, "delta_min": 400},
+    "hn": {"min_points": 30, "top": 25, "lookback_hours": 30},
+    # Six feeds that answered on 2026-10-17. Anthropic and Meta AI publish no feed; see docs/05 §3.1.
+    "official": {"feeds": {
+        "openai": "https://openai.com/news/rss.xml",
+        "google-ai": "https://blog.google/technology/ai/rss/",
+        "deepmind": "https://deepmind.google/blog/rss.xml",
+        "huggingface": "https://huggingface.co/blog/feed.xml",
+        "mistral": "https://mistral.ai/rss.xml",
+        "microsoft-research": "https://www.microsoft.com/en-us/research/feed/"},
+                 "max_per_run": 10, "lookback_days": 7},
     "new_sites": {"queries": {"ai": "%ai%"}, "weekday": 0, "window_days": 90, "min_etv": 1000, "min_keywords": 20},
     "review": {"after_days": 14, "per_day": 5},
     "usecases": {"per_day": 5, "model": "claude-sonnet-4-6", "min_volume": 50, "trends_max": 10, "recheck_days": 3,

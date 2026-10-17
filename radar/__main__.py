@@ -11,6 +11,8 @@ Signals:
   ③ newsites  domains registered in the last 90 days that already rank (weekly; AIsa)
   ⑥ revenue   products people pay for, growing fastest or newly listed (weekly; TrustMRR key)
   ⑦ asks      what people ask for on Reddit ("is there an AI tool that…"), sized (weekly; AIsa)
+  ⑧ official  launch posts on the labs' own blogs (RSS/Atom, no key)
+  ⑨ HN        Show HN stories above a point floor that no earlier run read (Algolia, no key)
   ④ gsc       queries your own site got impressions for, for the first time (optional)
   ⑤ review    leads from 14 days ago checked in Google Trends; hit rate per signal (AIsa)
   usecases    the generic terms behind today's names, sized against a benchmark keyword (AIsa)
@@ -40,10 +42,12 @@ import sys
 from datetime import date, datetime
 from pathlib import Path
 
-from . import asks, breakout, config, env, gsc, new_sites, notify, pains, report, review, revenue, sitemaps, sources, store, usecases
+from . import (asks, breakout, config, env, gsc, hn, new_sites, notify, official, pains, report, review, revenue,
+               sitemaps, sources, store, usecases)
 from .i18n import t
 
-SKIPPABLE = {"x", "hf", "breakout", "sitemaps", "newsites", "revenue", "asks", "gsc", "review", "judge", "usecases", "tutorials"}
+SKIPPABLE = {"x", "hf", "breakout", "sitemaps", "newsites", "revenue", "asks", "gsc", "review", "judge", "usecases",
+             "tutorials", "hn", "official"}
 
 
 def run(fn, skip: bool = False) -> dict:
@@ -91,6 +95,8 @@ def cmd_daily(args, cfg: dict, state: Path) -> int:
             args.revenue or date.today().weekday() == cfg["revenue"]["weekday"])),
         "ask": run(lambda: asks.asks(cfg, state), "asks" in args.skip or not (
             args.asks or date.today().weekday() == cfg["asks"]["weekday"])),
+        "hn": run(lambda: hn.hn(cfg, state), "hn" in args.skip),
+        "official": run(lambda: official.official(cfg, state), "official" in args.skip),
     }
     found = run(lambda: gsc.gsc_new(cfg), "gsc" in args.skip)
     lead, judged = report.leads(cfg, blocks)
