@@ -20,6 +20,11 @@ PREFIXES = {"meta", "muse", "openai", "google", "anthropic", "microsoft", "nvidi
             "bytedance", "alibaba", "tencent", "xai", "baidu", "deepseek"}
 # The ones that are only the company: canonical() drops them.
 COMPANIES = PREFIXES - {"muse", "deepseek"}
+# A maker alone is a company, not a new thing: a headline that starts with "OpenAI" must
+# not report "openai" as this week's new name. A version keeps it ("openai o3").
+MAKERS = COMPANIES | {"huggingface", "hugging face", "mistral", "amazon", "aws", "apple", "samsung",
+                      "cohere", "stability", "perplexity", "github", "adobe", "salesforce", "ibm",
+                      "intel", "amd", "x", "twitter", "facebook", "instagram", "linkedin", "tiktok"}
 # A delivery format or a quantization: it says where or how the thing runs, not which thing.
 FORMATS = {"api", "gguf", "lora", "awq", "fp8", "comfy", "ollama", "lmstudio", "ckpt",
            "safetensors", "onnx", "ggml", "q8", "q4"}

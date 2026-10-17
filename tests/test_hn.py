@@ -20,6 +20,11 @@ def test_a_title_that_names_nothing_is_dropped():
     assert hn.title_name("Show HN: Building an LLM from Scratch in TypeScript") is None
 
 
+def test_a_company_name_alone_is_not_a_new_name():
+    assert hn.title_name("Show HN: OpenAI: a tool for X") is None
+    assert hn.title_name("Show HN: OpenAI released GPT-6") is None
+
+
 def test_a_story_read_before_is_not_a_new_name(tmp_path, cfg, monkeypatch):
     hits = [{"objectID": "1", "title": "Show HN: Fable – a writing app", "points": 120, "num_comments": 30,
              "created_at_i": int(NOW.timestamp()), "url": "https://example.com/fable"},
@@ -49,3 +54,13 @@ def test_a_story_below_the_point_floor_is_not_counted(cfg, tmp_path, monkeypatch
     got = hn.hn(cfg, tmp_path, now=NOW)
 
     assert got["read"] == 1 and got["found"] == 0
+
+
+def test_a_full_page_says_the_tail_was_not_read(tmp_path, cfg, monkeypatch):
+    hits = [{"objectID": str(i), "title": "Show HN: Thing", "points": 1, "num_comments": 0,
+             "created_at_i": int(NOW.timestamp())} for i in range(hn.HITS)]
+    monkeypatch.setattr(hn, "_get", lambda url: {"hits": hits})
+
+    got = hn.hn(cfg, tmp_path, now=NOW)
+
+    assert got["read"] == hn.HITS and got["capped"] is True

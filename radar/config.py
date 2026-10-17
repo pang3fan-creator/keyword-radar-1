@@ -23,6 +23,7 @@ DEFAULTS = {
     "judge": {"model": "gpt-4.1-mini", "min_score": 0.5},
     "breakout": {"window_days": 14, "min_stars": 300, "velocity_min": 200, "delta_min": 400},
     "hn": {"min_points": 30, "top": 25, "lookback_hours": 30},
+    "ph": {"min_votes": 50, "top": 25, "lookback_hours": 26, "topic": "artificial-intelligence"},
     # Six feeds that answered on 2026-10-17. Anthropic and Meta AI publish no feed; see docs/05 §3.1.
     "official": {"feeds": {
         "openai": "https://openai.com/news/rss.xml",

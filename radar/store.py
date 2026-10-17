@@ -129,8 +129,10 @@ def signals_for(conn: sqlite3.Connection, term: str) -> dict:
     name = " ".join(term.lower().split())
     if not name:
         return {"kinds": [], "named": None}
+    like = name.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     rows = conn.execute("SELECT id, canonical, name_score, aliases FROM terms"
-                        " WHERE canonical = ? OR aliases LIKE ?", (name, f'%"{name}"%')).fetchall()
+                        " WHERE canonical = ? OR aliases LIKE ? ESCAPE '\\'",
+                        (name, f'%"{like}"%')).fetchall()
     row = next((r for r in rows if r[1] == name), None) or \
         next((r for r in rows if name in json.loads(r[3])), None)
     if row is None:

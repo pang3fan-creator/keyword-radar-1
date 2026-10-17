@@ -232,7 +232,8 @@ def _source_line(kind: str, block: dict) -> str:
     found, and the feeds that failed. An unlabelled kind still shows up -- a source that
     ran and says nothing is the bug this line exists to prevent."""
     if block.get("skipped"):
-        state = t("skipped")
+        no_key = block.get("no_key")
+        state = t("st_nokey", name=no_key) if isinstance(no_key, str) else t("skipped")
     elif block.get("error"):
         state = block["error"]
     elif block.get("read") is None:
@@ -241,6 +242,8 @@ def _source_line(kind: str, block: dict) -> str:
         state = t("st_source_ok", n=block["read"], found=block.get("found", 0))
     if block.get("failed"):
         state += t("st_failed", names=", ".join(block["failed"]))
+    if block.get("capped"):
+        state += t("st_capped")
     label = t(f"kind_{kind}") if f"kind_{kind}" in T else kind
     return t("st_source", label=label, state=state)
 

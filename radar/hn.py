@@ -7,7 +7,8 @@ colon or bracket, is the name. The point floor drops the showcase posts nobody u
 a story that crosses it later is still new, because a skipped story is not marked seen.
 
 Each story is reported once: objectIDs live in state/hn_seen.json.gz. A name that two
-stories carry is one lead with both examples.
+stories carry is one lead with both examples. A full Algolia page is reported as capped:
+the tail was not read, and saying so beats a silent limit.
 """
 from __future__ import annotations
 
@@ -18,11 +19,12 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from . import UA, snap
+from . import UA, entity, snap
 from .i18n import t
 
 URL = "https://hn.algolia.com/api/v1/search_by_date"
 SEEN_DAYS = 60
+HITS = 100        # Algolia page size; a full page means the tail was not read
 
 PREFIX = "show hn:"
 NOT_A_NAME = ("ask hn:", "tell hn:", "poll:", "launch hn:")
@@ -51,6 +53,8 @@ def title_name(title: str) -> str | None:
     words = name.split()
     if len(name) < 3 or all(w in GENERIC for w in words) or words[0] in {"i", "we", "my", "our", "the", "a", "an"}:
         return None
+    if name in entity.MAKERS and not any(ch.isdigit() for ch in name):
+        return None     # "OpenAI" is a company, not this week's new name
     if len(words) == 1 and len(name) >= 6 and name.endswith("ing"):
         return None     # "Show HN: Building an LLM from Scratch" is a gerund, not a name
     return name
@@ -58,7 +62,7 @@ def title_name(title: str) -> str | None:
 
 def _url(cfg, now: datetime) -> str:
     since = int((now - timedelta(hours=cfg["hn"]["lookback_hours"])).timestamp())
-    query = urllib.parse.urlencode({"tags": "show_hn", "hitsPerPage": 100,
+    query = urllib.parse.urlencode({"tags": "show_hn", "hitsPerPage": HITS,
                                     "numericFilters": f"points>={cfg['hn']['min_points']},created_at_i>={since}"})
     return f"{URL}?{query}"
 
@@ -95,4 +99,4 @@ def hn(cfg: dict, state: Path, now: datetime | None = None) -> dict:
     if hits:        # a failed fetch keeps yesterday's snapshot
         cutoff = (now - timedelta(days=SEEN_DAYS)).date().isoformat()
         snap.save(path, {k: v for k, v in seen.items() if v >= cutoff})
-    return {"read": len(hits), "found": len(out), "terms": out}
+    return {"read": len(hits), "found": len(out), "capped": len(hits) >= HITS, "terms": out}

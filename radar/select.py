@@ -13,7 +13,7 @@ from __future__ import annotations
 
 # Signal keys in the order they tend to notice a new name: the lab or the maker first, a
 # sitemap echo last. Shared with report.py, which labels the blocks in this order.
-EARLY = ["official", "x", "hf", "breakout", "hn", "sitemap", "newsite", "revenue", "ask", "usecase",
+EARLY = ["official", "x", "hf", "breakout", "hn", "ph", "sitemap", "newsite", "revenue", "ask", "usecase",
          "cosearch", "watch"]
 SLOW = {"usecase", "cosearch"}      # combo words, not names: they earn keyword rows, not a name slot
 URL_KINDS = {"sitemap", "newsite"}  # a competitor publishing a page is an echo of a name, not a new one

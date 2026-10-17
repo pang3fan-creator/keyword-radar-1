@@ -49,3 +49,21 @@ def test_a_skipped_sitemap_says_so():
     text = _lines(sitemap={"skipped": True})
 
     assert "③ sitemaps: skipped" in text
+
+
+def test_a_page_that_was_full_says_the_tail_was_not_read():
+    text = _lines(hn={"read": 100, "found": 3, "capped": True})
+
+    assert "100 read, 3 new" in text and "hit the page cap" in text
+
+
+def test_a_source_that_ran_without_a_count_says_it_ran():
+    text = _lines(newsource={"terms": []})
+
+    assert "newsource: ran" in text
+
+
+def test_a_source_that_is_off_names_the_key_it_needs():
+    text = _lines(ph={"skipped": True, "no_key": "PH_API_KEY"})
+
+    assert "off, no PH_API_KEY" in text

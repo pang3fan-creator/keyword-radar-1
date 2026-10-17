@@ -10,6 +10,7 @@ def english(monkeypatch):
     monkeypatch.setenv("RADAR_SKIP_ENV_FILE", "1")   # never read the developer's real .env in a test
     i18n.set_lang("en")
     monkeypatch.delenv("GOANYAPI_API_KEY", raising=False)   # the optional source is off unless a test turns it on
+    monkeypatch.delenv("PH_API_KEY", raising=False)        # Product Hunt is off unless a test turns it on
 
     def no_network(*a, **k):
         raise goanyapi.GoAnyError("no network in tests")

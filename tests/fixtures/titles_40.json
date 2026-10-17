@@ -1,0 +1,204 @@
+[
+ {
+  "source": "hn",
+  "title": "Show HN: Llmspeed – feel how fast a local LLM runs before you buy the hardware",
+  "expected": "llmspeed"
+ },
+ {
+  "source": "hn",
+  "title": "Show HN: Fakeipedia – Wikipedia for worlds that don't exist",
+  "expected": "fakeipedia"
+ },
+ {
+  "source": "hn",
+  "title": "Show HN: Stoke Money – Personal finance app built around a cash flow forecast",
+  "expected": "stoke money"
+ },
+ {
+  "source": "hn",
+  "title": "Show HN: rStation – A shared research lab for your AI agents",
+  "expected": null,
+  "known_miss": "a lowercase first letter is not read as a name"
+ },
+ {
+  "source": "hn",
+  "title": "Show HN: Gemini 4 Argon plays StarCraft",
+  "expected": "gemini 4 argon"
+ },
+ {
+  "source": "hn",
+  "title": "Show HN: Sygal – Convert PDFs, scans and web pages to Markdown, locally",
+  "expected": "sygal"
+ },
+ {
+  "source": "hn",
+  "title": "Show HN: Proa – A Rust web framework with fast SSR and multi-target rendering",
+  "expected": "proa"
+ },
+ {
+  "source": "hn",
+  "title": "Show HN: Unfenced – Land for sale that borders public land",
+  "expected": "unfenced"
+ },
+ {
+  "source": "hn",
+  "title": "Show HN: Flipflop – Iroh-powered persistent tunnels for filesharing",
+  "expected": "flipflop"
+ },
+ {
+  "source": "hn",
+  "title": "Show HN: My Terminal Themes Web App",
+  "expected": null
+ },
+ {
+  "source": "hn",
+  "title": "Show HN: Ito – Build Terminal UIs in Lua",
+  "expected": "ito"
+ },
+ {
+  "source": "hn",
+  "title": "Show HN: Petal, open-source CoScreen/ScreenHero finally free",
+  "expected": "petal"
+ },
+ {
+  "source": "hn",
+  "title": "Show HN: I wrote an email app that accepts only one sender per inbox",
+  "expected": null
+ },
+ {
+  "source": "hn",
+  "title": "Show HN: Graphicle, a Rust port of Graphify with memory for coding agents",
+  "expected": "graphicle"
+ },
+ {
+  "source": "hn",
+  "title": "Show HN: Building an LLM from Scratch in TypeScript",
+  "expected": null
+ },
+ {
+  "source": "hn",
+  "title": "Show HN: A guided 3D Leonardo da Vinci museum, built in code",
+  "expected": null
+ },
+ {
+  "source": "hn",
+  "title": "Show HN: I built a tool to track what AI leaders say and how their views change",
+  "expected": null
+ },
+ {
+  "source": "hn",
+  "title": "Show HN: Pulse Local, a Mac budgeting app whose AI models run on your machine",
+  "expected": "pulse local"
+ },
+ {
+  "source": "hn",
+  "title": "Show HN: Wonderhop – A daily game: guess what most people say, or what none do",
+  "expected": "wonderhop"
+ },
+ {
+  "source": "hn",
+  "title": "Show HN: Parsimony – an open-source benchmark for how much code AI models add",
+  "expected": "parsimony"
+ },
+ {
+  "source": "official:openai",
+  "title": "How Itaú is building generative AI for its entire customer base",
+  "expected": null
+ },
+ {
+  "source": "official:openai",
+  "title": "Benefit Street Partners answers questions faster with Codex",
+  "expected": null
+ },
+ {
+  "source": "official:openai",
+  "title": "Stack Overflow for Agents triples signups with ChatGPT plugin",
+  "expected": null
+ },
+ {
+  "source": "official:openai",
+  "title": "Bringing GPT-Rosalind to academic research labs",
+  "expected": null
+ },
+ {
+  "source": "official:openai",
+  "title": "Teaching students to think and learn through questions",
+  "expected": null
+ },
+ {
+  "source": "official:openai",
+  "title": "Sullivan & Cromwell brings legal expertise into agreement review",
+  "expected": null
+ },
+ {
+  "source": "official:openai",
+  "title": "Amp puts AI agents to work beyond code with OpenAI models",
+  "expected": null
+ },
+ {
+  "source": "official:openai",
+  "title": "SentinelOne cuts malware analysis from weeks to hours",
+  "expected": null
+ },
+ {
+  "source": "official:openai",
+  "title": "How Third Moment Research runs 10,000 agents for 36+ hours",
+  "expected": null
+ },
+ {
+  "source": "official:openai",
+  "title": "How Block is building AI-powered security with OpenAI technology",
+  "expected": null
+ },
+ {
+  "source": "official:openai",
+  "title": "The EU’s next chapter in AI is agentic",
+  "expected": null
+ },
+ {
+  "source": "official:openai",
+  "title": "Higgsfield takes AI video from 1 minute to over 10",
+  "expected": null
+ },
+ {
+  "source": "official:google-ai",
+  "title": "Gemini 4 Argon: Built to solve your hardest problems",
+  "expected": "gemini 4 argon"
+ },
+ {
+  "source": "official:deepmind",
+  "title": "Accelerating the search for antimicrobial peptides with Google Antigravity",
+  "expected": null,
+  "known_miss": "the name is not at the start of the title"
+ },
+ {
+  "source": "official:deepmind",
+  "title": "Google DeepMind and Singapore Government collaborate to build fine-tuned AI model for scam detection",
+  "expected": null
+ },
+ {
+  "source": "official:deepmind",
+  "title": "Developing Gemini 4 Argon responsibly and safely",
+  "expected": "gemini 4 argon"
+ },
+ {
+  "source": "official:deepmind",
+  "title": "Gemini 4 Argon for Robotics",
+  "expected": "gemini 4 argon"
+ },
+ {
+  "source": "official:deepmind",
+  "title": "Gemini 4 Argon: Built to solve your hardest problems",
+  "expected": "gemini 4 argon"
+ },
+ {
+  "source": "official:huggingface",
+  "title": "Scaling Indic Pretraining: 2.8 Trillion Tokens and an Open Data Generation Pipeline",
+  "expected": null
+ },
+ {
+  "source": "official:huggingface",
+  "title": "Welcome Beam: a 501B open model you can own, customize, and scale",
+  "expected": "beam"
+ }
+]

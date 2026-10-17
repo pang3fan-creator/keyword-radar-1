@@ -15,7 +15,8 @@ is rejected: its first word is a number, not a name.
 Feeds are a config list (official.feeds, name -> URL). RSS and Atom both parse; a gzipped
 body regardless of the request is unzipped. Only posts from the last `lookback_days` are
 read, because a feed carries its whole archive (OpenAI's had 1,299 items). Each link is
-reported once (state/official_seen.json.gz). One dead feed does not hide the others.
+reported once (state/official_seen.json.gz). A dead feed -- a timeout, a 404, or a
+page that is not a feed -- is a line, not a lost run.
 """
 from __future__ import annotations
 
@@ -27,7 +28,7 @@ from datetime import date, datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 
-from . import UA, snap
+from . import UA, entity, snap
 from .i18n import t
 
 # The first word decides whether a digit-less name is a launch ("Introducing Fable").
@@ -71,6 +72,8 @@ def launch_name(title: str) -> str | None:
     name = " ".join(run).lower()
     if NUMERIC.fullmatch(run[0]) or len(name) < 3 or all(w in GENERIC for w in name.split()):
         return None
+    if name in entity.MAKERS and not any(ch.isdigit() for ch in name):
+        return None     # "OpenAI" is a company, not this week's new name
     if any(ch.isdigit() for ch in name) or OPENS_WITH_LAUNCH.match(_clean(title.split()[0])):
         return name
     return None
@@ -132,10 +135,11 @@ def official(cfg: dict, state: Path, now: datetime | None = None) -> dict:
     for name, url in c["feeds"].items():
         try:
             body = _get(url)
-        except Exception:  # noqa: BLE001  one dead feed is a line, not a lost run
+            parsed = items(body)    # a web page is not a feed; it must not cost the others
+        except Exception:  # noqa: BLE001
             failed.append(name)
             continue
-        for item in items(body):
+        for item in parsed:
             if not item["published"] or item["published"] < since:
                 continue        # the feed's archive is not today's news
             read += 1

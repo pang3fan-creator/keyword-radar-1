@@ -32,6 +32,12 @@ def test_a_launch_title_gives_the_name_it_launches():
     assert official.launch_name("GPT-6 Astra is here") == "gpt-6 astra"
 
 
+def test_a_company_name_alone_is_not_a_new_name():
+    assert official.launch_name("OpenAI: our new model") is None
+    assert official.launch_name("Introducing OpenAI") is None
+    assert official.launch_name("Introducing Mistral") is None
+
+
 def test_a_customer_story_or_a_list_or_a_gerund_names_nothing():
     assert official.launch_name("How Itaú is building generative AI for its customers") is None
     assert official.launch_name("Stack Overflow for Agents triples signups with ChatGPT") is None
@@ -85,3 +91,13 @@ def test_a_dead_feed_does_not_hide_the_others(tmp_path, cfg, monkeypatch):
     got = official.official(cfg, tmp_path, now=NOW)
 
     assert got["failed"] == ["b"] and got["found"] == 1
+
+
+def test_a_feed_that_returns_a_web_page_is_one_line_not_a_lost_run(tmp_path, cfg, monkeypatch):
+    cfg["official"]["feeds"] = {"a": "https://a.example/rss", "b": "https://b.example/broken"}
+    page = b"<!DOCTYPE html><html><body>&nbsp;<br>challenge</body></html>"
+    monkeypatch.setattr(official, "_get", lambda url: RSS.encode() if "a.example" in url else page)
+
+    got = official.official(cfg, tmp_path, now=NOW)
+
+    assert got["found"] == 1 and got["failed"] == ["b"]
