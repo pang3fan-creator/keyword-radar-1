@@ -211,3 +211,11 @@ def test_merging_keeps_one_review_per_window_and_the_newer_one_wins(tmp_path):
     rows = conn.execute("SELECT term_id, days, checked_at, search_rise, lead_days, metrics FROM reviews").fetchall()
     assert len(rows) == 1 and rows[0][0] == a
     assert rows[0][2:] == ("2026-10-18", 0, None, '{"verdict":"miss"}')   # newer row wins whole
+
+
+def test_signals_for_a_term_come_from_its_signal_rows(tmp_path):
+    conn = store.connect(tmp_path)
+    store.record(conn, [_lead("figcraft", ["breakout", "x"], named=0.9)], DAY)
+
+    assert store.signals_for(conn, "figcraft") == {"kinds": ["breakout", "x"], "named": 0.9}
+    assert store.signals_for(conn, "never seen") == {"kinds": [], "named": None}

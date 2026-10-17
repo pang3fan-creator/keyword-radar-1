@@ -66,7 +66,7 @@ Python 3.10 or newer. The runtime uses only the standard library. The project ve
 ```bash
 .venv/bin/python -m radar daily --out report.md      # fast lane + keyword table + review
 .venv/bin/python -m radar sources --out sources.md   # X + HF only
-.venv/bin/python -m radar keywords "name" --json     # on-demand keyword table
+.venv/bin/python -m radar keywords "name" --json     # on-demand table; prints its cost, records a run
 .venv/bin/python -m radar leads --days 7             # free; inspect stored leads
 .venv/bin/python scripts/merge_terms.py --dry-run    # one-off: fold twin terms, mark URL echoes
 .venv/bin/python scripts/bench_check.py --dry-run    # monthly: check the basket, cache its daily size
@@ -148,7 +148,8 @@ M2 completed on 2026-10-17 (`57ff687`, `01dda93`, `211d602`):
 - `tests/fixtures/golden_30.json` pins 30 canned words against the thresholds and the decision rules; a day of all watch/skip still passes, because the output count is a reference.
 - `radar/benchmarks.py` sizes names against a basket of six, after a quarter-slope, month-over-month and spike check. `scripts/bench_check.py --apply` refreshes the cache monthly; on 2026-10-17 it kept 5 of 6 (`pdf converter` out, month over month +124%) and cost $0.097.
 - `radar/leading.py`: when the basket cannot size a name, two or more signals plus a name score of 0.8 or better makes it a priority; the table shows both facts.
-- New columns Size and Leading; the benchmark line names what was left out and why.
+- New columns Size and Leading; the benchmark line names what was left out and why; the decision legend says the unknown-size rule.
+- `keywords` now feeds the same leading rule from stored signals, prints its cost on stderr and writes a `runs` row, so the manual path is not a second, quieter radar.
 - Validation: the 2026-10-17 `daily` read no names (the only candidate scored 0.70), so `keywords "deepseek v4.1 flash 1017"` was run instead and produced a sized row. The daily itself cost $0.099 and wrote its `runs` row.
 
 Still open after M2:

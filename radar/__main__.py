@@ -130,7 +130,11 @@ def cmd_daily(args, cfg: dict, state: Path) -> int:
 
 def keyword_table(cfg: dict, state: Path, names: list[str], repos: dict[str, str]) -> tuple[dict, str]:
     """The keyword table for names someone asked about: (the data, the table in Markdown)."""
-    uc = usecases.run(cfg, state, [n.lower().strip() for n in names if n.strip()], {k.lower(): v for k, v in repos.items()}, on_request=True)
+    asked = [n.lower().strip() for n in names if n.strip()]
+    conn = store.connect(state)
+    signals = {n: store.signals_for(conn, n) for n in asked}     # the same leading rule as daily
+    uc = usecases.run(cfg, state, asked, {k.lower(): v for k, v in repos.items()}, on_request=True,
+                      signals=signals)
     return uc, "\n".join(report.keyword_table(cfg, uc)).strip() + "\n"
 
 
@@ -140,12 +144,19 @@ def kept_leads(state: Path, days: int) -> dict:
 
 
 def cmd_keywords(args, cfg: dict, state: Path) -> int:
+    started = datetime.now().isoformat(timespec="seconds")
     repos = dict(r.split("=", 1) for r in args.repo)
     uc, text = keyword_table(cfg, state, args.names, repos)
     out = json.dumps(uc, ensure_ascii=False, indent=1, default=str) if args.json else text
     if args.out:
         Path(args.out).write_text(out)
     print(out)
+    cost = uc.get("cost_micros") or 0
+    print(t("cost", cost=f"${cost / 1e6:.3f}"), file=sys.stderr)   # keep the JSON body clean
+    conn = store.connect(state)
+    run(lambda: {"run": store.record_run(conn, "keywords", started,
+                                         datetime.now().isoformat(timespec="seconds"), cost,
+                                         {"names": len(args.names)}, [])})
     return 0
 
 

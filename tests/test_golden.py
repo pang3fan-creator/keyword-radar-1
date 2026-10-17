@@ -27,6 +27,7 @@ def test_each_word_keeps_its_volume_status_and_decision(row):
     assert usecases.volume_status(row["volume"], MIN_VOLUME) == row["volume_status"]
     state = {"now": row["now"], "no_data": row["no_data"]}
     assert usecases.decide(state, row["per_day"], MIN_DAILY) == row["decision"]
+    assert usecases.size_status(row["per_day"], row["dailies"]) == row["size_status"]
 
 
 def test_a_phrase_without_volume_is_kept_and_told_so():

@@ -5,6 +5,8 @@ import re
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
+import pytest
+
 from radar import __main__ as cli
 from radar import breakout, config, gsc, i18n, judge, new_sites, notify, report, review, sitemaps, store
 from radar.sources import base_name, novel_names
@@ -438,6 +440,7 @@ def test_every_text_has_both_languages():
 
 
 def test_mail_html_renders_tables():
+    pytest.importorskip("markdown")          # optional dependency: skip instead of a permanent red
     out = notify.html("| a | b |\n|---|---|\n| 1 | 2 |")
     assert "<table style=" in out and ">1</td>" in out
     # Gmail drops a <style> block outside <head>: every tag carries its own style.
@@ -1130,3 +1133,30 @@ def test_the_keyword_header_and_its_separator_agree_in_every_language():
         assert header.format()                         # no placeholder left to fill
         assert header.count("|") == sep.count("|")     # same number of columns
     i18n.set_lang("en")
+
+
+def test_every_english_placeholder_exists_in_chinese():
+    from string import Formatter
+
+    def fields(text):
+        return {name for _, name, _, _ in Formatter().parse(text) if name}
+
+    missing = {key: sorted(fields(en) - fields(zh)) for key, (en, zh) in i18n.T.items()
+               if fields(en) - fields(zh)}
+    assert missing == {}
+
+
+def test_a_table_without_a_calibrated_basket_still_renders(cfg):
+    rise = _daily([1] * 85 + [9, 53, 40, 59, 100])
+    rows = [{"term": "figcraft", "phrase": "figcraft", "kind": "name", "names": [], "brand": True,
+             "evidence": "", "kinds": ["x", "hf"], "named": 0.9}]
+
+    usecases.measure(rows, {"figcraft": rise}, {}, 300, TODAY, {}, None)
+
+    uc = {"names": ["figcraft"], "rows": rows, "proposed": 1, "relevant": 1, "kept": 0,
+          "benchmark": "chatgpt, canva", "bench_daily": None, "volume_month": "",
+          "bench_usable": [], "bench_dropped": {"canva": {"reason": "slope +40%"}}}
+    text = "\n".join(report.keyword_table(cfg, uc))
+
+    assert rows[0]["size_status"] == "uncalibrated" and rows[0]["decision"] == "prioritize"
+    assert "uncalibrated" in text and "slope +40%" in text and "**prioritize**" in text

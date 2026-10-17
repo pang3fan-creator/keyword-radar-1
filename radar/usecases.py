@@ -269,6 +269,14 @@ def volume_status(volume: int, min_volume: int) -> str:
     return "below_threshold" if volume < min_volume else "known"
 
 
+def size_status(per_day: int | None, dailies: dict[str, int] | None) -> str:
+    """`known` when a size was computed; `uncalibrated` when no benchmark could carry one;
+    `unknown` when the basket is fine but this name has no pair data."""
+    if per_day is not None:
+        return "known"
+    return "uncalibrated" if not dailies else "unknown"
+
+
 def keep(proposed: dict[str, dict], vol: dict[str, dict], c: dict) -> list[dict]:
     """Every relevant phrase, sized or not. `min_volume` is a label, never a gate."""
     rows = []
@@ -490,7 +498,7 @@ def measure(rows: list[dict], solo: dict[str, list], pairs: dict[str, dict], min
             per_day = benchmarks.size(ratios(pairs.get(r["phrase"]) or {}, today), dailies)
             if per_day is not None:
                 z["per_day"] = per_day
-            r["size_status"] = "known" if per_day is not None else ("uncalibrated" if not dailies else "unknown")
+            r["size_status"] = size_status(per_day, dailies)
         else:
             own = own_per_day(solo.get(r["phrase"]) or [], r.get("volume", 0), r.get("month", ""), today)
             if own is not None:
