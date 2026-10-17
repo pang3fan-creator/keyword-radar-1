@@ -26,6 +26,8 @@ radar/                 runtime code (upstream layout; keep it recognizable)
   sources.py           X and Hugging Face signals
   breakout.py          GitHub breakout signal
   sitemaps.py          new URLs in configured sitemaps
+  hn.py                Show HN stories: one lead per name, each story once (free)
+  official.py          launch posts on the labs' own feeds, RSS and Atom (free)
   terms.py             name/term extraction
   judge.py             LLM name judge
   entity.py            one term per thing: normalize, merge, canonical
@@ -70,6 +72,7 @@ Python 3.10 or newer. The runtime uses only the standard library. The project ve
 .venv/bin/python -m radar leads --days 7             # free; inspect stored leads
 .venv/bin/python scripts/merge_terms.py --dry-run    # one-off: fold twin terms, mark URL echoes
 .venv/bin/python scripts/bench_check.py --dry-run    # monthly: check the basket, cache its daily size
+.venv/bin/python scripts/new_sites_probe.py           # one paid call ($0.13): what the whois query returns
 ```
 
 A full `daily` costs about **$0.34** and takes 10–15 minutes with the current 35 X accounts. `keywords` costs about $0.05 per name plus $0.09 per call. State the cost before a paid run, and do not run `daily` twice in a row (the second run reports only the delta).
@@ -117,7 +120,7 @@ M0 completed on 2026-10-17:
 - 35/35 X accounts, 660 posts; 189 new GitHub repos; 12 sitemaps (toolify fails).
 - 5 names read, 8 keyword rows; **no prioritize row** (2 watch, 6 skip).
 - Cost: **$0.341**; 75 leads in `state/radar.db`; review pending (14 days).
-- Known gaps: `new_sites` (DataForSEO filter), `toolify` sitemap, `gpts` benchmark uncalibrated, X-first selection bias, alias duplicates, some URL-fragment noise.
+- Known gaps at M0 (later closed where noted): `new_sites` (DataForSEO filter; re-checked in M3, the filter works), `toolify` sitemap, `gpts` benchmark uncalibrated, X-first selection bias, alias duplicates, some URL-fragment noise.
 
 M1 completed on 2026-10-17 (`516c6a2..be2d9f7`):
 
@@ -157,7 +160,29 @@ Still open after M2:
 - The benchmark cache is refreshed by hand (`scripts/bench_check.py`); no scheduler in v1.
 - `keywords` table in SQLite still has no writer.
 - The keyword table's `新词?` column still reads the Trends baseline, not `first_seen`.
-- `store.signals_for()` matches the exact canonical only: a name typed as one of its aliases comes back with no signals, so the leading column stays empty for it (M3).
+- `store.signals_for()` matches the exact canonical only: a name typed as one of its aliases comes back with no signals, so the leading column stays empty for it (fixed in M3).
+
+M3 completed on 2026-10-17 (`669378e`, `f73bef8`):
+
+- `radar/hn.py`: Show HN stories from the last `hn.lookback_hours` (30) with at least `hn.min_points` (30), at most `hn.top` (25) names. The first capitalised run of the title, before the first dash, colon or bracket, is the name; a lone gerund ("Show HN: Building an LLM from Scratch") is not. Each objectID is reported once (`state/hn_seen.json.gz`), and a story that crosses the floor later is still new. Free, no key.
+- `radar/official.py`: six launch feeds (OpenAI, Google AI, DeepMind, Hugging Face, Mistral, Microsoft Research). Only posts from the last `official.lookback_days` (7) are read: OpenAI's feed carries 1,299 items back to 2015. A title has to be a name: its first up-to-three words before the first colon, dash, pipe, bracket or comma, with launch words and gerunds dropped, kept when the name carries a digit or the title opens with a launch word. All 12 OpenAI titles in the 2026-10-17 sample were customer stories, essays or research posts and were dropped. One dead feed is a line, not a lost run; a gzipped body is unzipped; Microsoft's feed answers 403 without an `Accept` header.
+- Anthropic and Meta AI publish no usable feed (seven Anthropic paths answered 404 on 2026-10-17), so the official source is six feeds, not eight. Product Hunt has no adapter: no `PH_API_KEY` in `.env`, and an unverified adapter is not written.
+- `report._source_line()` gives every block without a bespoke line "{n} read, {m} new", the failed feed or query, or the error; a kind with no label still shows, and a skipped sitemap now says so. This is the answer to the M0 `toolify: no URLs read` class of bug: `aisa.call()` drops a failed call from the result, so a source has to count what came back.
+- `select.EARLY` starts with `official`, puts `hn` after `breakout`, and keeps the sitemap echo last. `usecases.READ_KINDS` includes both: before this, their names were stored and reviewed but never read for generic terms.
+- `store.signals_for()` finds a term by any spelling in its `aliases` (`spark open` -> `muse spark open`); the match is exact membership, so `beam` does not find `beam 1.0`.
+- `new_sites` is not broken. `scripts/new_sites_probe.py` (one paid call) got status 20000, 9 sites, $0.131 on 2026-10-17. The M0 gap was inherited from upstream and never reproduced here. The block now returns `read`/`found`/`failed`, and the status line names a query that did not answer.
+- Validation: `daily --skip x,hf,breakout,sitemaps,newsites,revenue,asks,gsc,review,judge,usecases,tutorials` against a temporary state dir cost $0 and read 5 HN stories and 28 official posts; it named 10 things (`beam`, `flux.3 image klein`, `granite switch 4.1`, `hiro-acev2`, `timestral`, `muse spark open`, `gemini 4 argon`, `fakeipedia`, `llmspeed`, `stoke money`), and `gemini 4 argon` came from both HN and Google's blog.
+- A 40-title sample (20 Show HN, 20 recent official posts) gave 19 names (14 and 5), checked by eye against their titles; the one false positive the sample caught ("building" from "Show HN: Building an LLM from Scratch in TypeScript") is now rejected by the gerund rule. Known misses: a lowercase-start name (`Show HN: rStation`), and names not at the start of a title (`Google Antigravity`, `LFM2.5-24B-A2B`). 14-day hit rates are M5's.
+- Cost: $0.131 for the probe; the dry run was free.
+
+Still open after M3:
+
+- Product Hunt: blocked on `PH_API_KEY` / `PH_API_SECRET`; no code until the key exists.
+- The five-name reading budget is unchanged; HN and official names compete for the same slots, so a busy launch week can crowd out X.
+- `sources` (the frequent job) still runs x/hf only; HN and official run in `daily`.
+- Only the six default feeds are verified; adding one is a config edit, not a code change.
+- The keyword table's `新词?` column still reads the Trends baseline, not `first_seen` (from M2).
+- The benchmark cache is still refreshed by hand; the SQLite `keywords` table still has no writer.
 
 ## Before you hand work over
 
