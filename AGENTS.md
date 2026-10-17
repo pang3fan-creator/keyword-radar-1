@@ -195,6 +195,8 @@ Still open after M3:
 - Only the six default feeds are verified; adding one is a config edit, not a code change. The 40-title fixture is one day's sample: a new feed or a fixed miss needs the fixture updated.
 - The keyword table's `新词?` column still reads the Trends baseline, not `first_seen` (from M2).
 - The benchmark cache is still refreshed by hand; the SQLite `keywords` table still has no writer.
+- `ph.name()` reads only the subtitle's first word, and `SUB` (the/for/with/...) drops it when it is a function word: "Notion: for your agents" would come back as `notion` alone. M4 decides between shrinking `SUB` to the articles and a brand+feature pair.
+- PH name extraction has no negative fixture variants (a "by <maker>" suffix, a two-colon title); the 40-title fixture covers HN and the official feeds only.
 
 ## Before you hand work over
 
