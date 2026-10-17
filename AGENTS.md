@@ -31,7 +31,8 @@ radar/                 runtime code (upstream layout; keep it recognizable)
   usecases.py          evidence -> generic terms -> keyword table
   competition.py       SERP / KD / DR page-one check
   review.py            14-day Trends review
-  store.py             SQLite memory
+  store.py             SQLite memory; SCHEMA (leads) and SCHEMA_NEXT (the M1 tables)
+  migrate.py           one-off: leads -> terms / term_signals / reviews / runs
   report.py            Markdown/JSON reports
   aisa.py, goanyapi.py paid data sources
 tests/                 pytest suite; no network, no paid calls
@@ -98,7 +99,8 @@ The long-term model is `terms` / `term_signals` / `keywords` / `reviews` / `runs
 Planned rules from `docs/05`:
 
 - Entity resolution: conservative; merge only contiguous token-subsequence variants from the same source/post/day, and only when the extra token is a maker or a format. Do not merge `pro` / `sol` / `max` variants.
-- Selection: after entity resolution, pick keyword-table names by a signal quota, not X-first order. No single signal above 60% of the visible top 20.
+- Selection: after entity resolution, pick keyword-table names by a signal quota, not X-first order. Name slots come from fast-lane terms only; a slow-lane generic phrase earns keyword-table rows but never a name slot. No single signal above 60% of the visible top 20.
+- `term_signals`: evidence, score and metadata are per kind. The migration reused the lead's last note for every kind as a one-off; the writer that replaces `store.record()` must not carry that over.
 - `known_terms`: word-boundary matching, not substring.
 - `new`: based on `first_seen`, not a Trends baseline.
 
@@ -111,12 +113,13 @@ M0 completed on 2026-10-17:
 - Cost: **$0.341**; 75 leads in `state/radar.db`; review pending (14 days).
 - Known gaps: `new_sites` (DataForSEO filter), `toolify` sitemap, `gpts` benchmark uncalibrated, X-first selection bias, alias duplicates, some URL-fragment noise.
 
+M1.0 completed on 2026-10-17: `scripts/migrate_leads.py --dry-run` reports, the real run copies. All 75 leads arrived as 75 `terms`, 76 `term_signals` and 2 `runs` (2026-10-16 and 2026-10-17, M0 cost 341000 micro-USD). `reviews` is empty because every review is still pending. The old table is unchanged, and `store.connect()` does not create the new tables yet, so `daily` keeps writing only `leads` until the readers move over. The pre-migration DB is at `state/backup-2026-10-17-pre-migration/`.
+
 Next milestone (M1):
 
-1. `scripts/migrate_leads.py`: migrate `leads` into the new tables; reconcile counts.
-2. `radar/entity.py`: tail cleanup + conservative alias clustering (tests first).
-3. Signal-balanced keyword-table selection (tests first).
-4. `known_terms` word-boundary matching; `new` via `first_seen`.
+1. `radar/entity.py`: tail cleanup + conservative alias clustering (tests first).
+2. Signal-balanced keyword-table selection (tests first): name slots by fast lane and signal quota, plus a fixture where a `usecase`-only phrase must not displace an HF 0.90 name. Replay M0 from `term_signals` to prove the GitHub leads surface.
+3. `known_terms` word-boundary matching; `new` via `first_seen`.
 
 ## Git and collaboration
 

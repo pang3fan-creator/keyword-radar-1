@@ -34,6 +34,76 @@ CREATE TABLE IF NOT EXISTS leads (
   trends      TEXT
 )"""
 
+# The long-term model (docs/05 §5). Created next to `leads` by scripts/migrate_leads.py;
+# the readers and writers move over to it in M1, one phase at a time.
+SCHEMA_NEXT = """
+CREATE TABLE IF NOT EXISTS terms (
+  id            INTEGER PRIMARY KEY,
+  canonical     TEXT NOT NULL UNIQUE,
+  aliases       TEXT NOT NULL DEFAULT '[]',
+  first_seen    TEXT NOT NULL,
+  last_seen     TEXT NOT NULL,
+  name_score    REAL,
+  window        TEXT,
+  confidence    TEXT,
+  decision      TEXT,
+  known         TEXT,
+  status        TEXT DEFAULT 'new',
+  created_at    TEXT,
+  updated_at    TEXT
+);
+CREATE TABLE IF NOT EXISTS term_signals (
+  id            INTEGER PRIMARY KEY,
+  term_id       INTEGER NOT NULL REFERENCES terms(id),
+  source        TEXT NOT NULL,
+  source_id     TEXT,
+  first_seen    TEXT NOT NULL,
+  evidence      TEXT,
+  url           TEXT,
+  score         REAL,
+  metadata      TEXT DEFAULT '{}'
+);
+CREATE TABLE IF NOT EXISTS keywords (
+  id            INTEGER PRIMARY KEY,
+  term_id       INTEGER NOT NULL REFERENCES terms(id),
+  phrase        TEXT NOT NULL,
+  kind          TEXT NOT NULL,
+  brand         INTEGER DEFAULT 0,
+  is_name       INTEGER DEFAULT 0,
+  established   INTEGER DEFAULT 0,
+  volume        INTEGER,
+  volume_month  TEXT,
+  volume_status TEXT,
+  per_day       INTEGER,
+  trend         TEXT DEFAULT '{}',
+  competition   TEXT DEFAULT '{}',
+  decision      TEXT,
+  confidence    TEXT,
+  created_at    TEXT,
+  updated_at    TEXT
+);
+CREATE TABLE IF NOT EXISTS reviews (
+  id            INTEGER PRIMARY KEY,
+  term_id       INTEGER NOT NULL REFERENCES terms(id),
+  keyword_id    INTEGER REFERENCES keywords(id),
+  days          INTEGER NOT NULL,
+  checked_at    TEXT NOT NULL,
+  name_real     INTEGER,
+  search_rise   INTEGER,
+  persistence   INTEGER,
+  lead_days     INTEGER,
+  metrics       TEXT DEFAULT '{}'
+);
+CREATE TABLE IF NOT EXISTS runs (
+  id            INTEGER PRIMARY KEY,
+  command       TEXT NOT NULL,
+  started_at    TEXT,
+  finished_at   TEXT,
+  cost_micros   INTEGER DEFAULT 0,
+  stats         TEXT DEFAULT '{}',
+  errors        TEXT DEFAULT '[]'
+)"""
+
 
 def connect(state_dir: Path) -> sqlite3.Connection:
     state_dir.mkdir(parents=True, exist_ok=True)
