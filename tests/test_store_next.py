@@ -107,4 +107,107 @@ def test_a_new_spelling_updates_the_term_already_stored(tmp_path):
     assert conn.execute("SELECT count(*) FROM terms").fetchone()[0] == 1
     first, last, aliases = conn.execute("SELECT first_seen, last_seen, aliases FROM terms").fetchone()
     assert (first, last) == ("2026-10-16", "2026-10-17")
-    assert json.loads(aliases) == ["deepseek v4.1 flash 1017"]
+    assert json.loads(aliases) == ["deepseek v4.1 flash 1017", "deepseek-v4.1-flash-1017"]
+
+
+def test_a_twin_already_in_memory_is_folded_into_one_term(tmp_path):
+    conn = store.connect(tmp_path)
+    for term in ("mirelo sfx", "mirelo sfx 2.0"):
+        conn.execute("INSERT INTO terms (canonical, first_seen, last_seen, aliases)"
+                     " VALUES (?,?,?,'[]')", (term, "2026-10-15", "2026-10-15"))
+    conn.commit()
+
+    store.record(conn, [_lead("mirelo sfx 2.0", ["x"])], DAY)
+
+    assert conn.execute("SELECT count(*) FROM terms").fetchone()[0] == 1
+    canonical, first, aliases = conn.execute("SELECT canonical, first_seen, aliases FROM terms").fetchone()
+    assert (canonical, first) == ("mirelo sfx 2.0", "2026-10-15")   # docs/05 §4.2 example
+    assert json.loads(aliases) == ["mirelo sfx", "mirelo sfx 2.0"]
+
+
+def test_merging_terms_moves_signals_and_reviews_and_keeps_one_row_per_source(tmp_path):
+    conn = store.connect(tmp_path)
+    a = conn.execute("INSERT INTO terms (canonical, first_seen, last_seen) VALUES ('spark open','2026-10-15','2026-10-15')").lastrowid
+    b = conn.execute("INSERT INTO terms (canonical, first_seen, last_seen) VALUES ('muse spark open','2026-10-16','2026-10-16')").lastrowid
+    for term, source in ((a, "x"), (b, "x"), (b, "hf")):
+        conn.execute("INSERT INTO term_signals (term_id, source, first_seen) VALUES (?,?,?)", (term, source, "2026-10-16"))
+    conn.execute("INSERT INTO reviews (term_id, days, checked_at) VALUES (?,14,'2026-10-17')", (b,))
+    conn.commit()
+
+    store.merge_terms(conn, a, b)
+
+    assert conn.execute("SELECT count(*) FROM terms").fetchone()[0] == 1
+    assert [r[0] for r in conn.execute("SELECT source FROM term_signals ORDER BY source")] == ["hf", "x"]
+    assert conn.execute("SELECT term_id FROM reviews").fetchone()[0] == a
+    assert json.loads(conn.execute("SELECT aliases FROM terms").fetchone()[0]) == ["muse spark open", "spark open"]
+    assert conn.execute("SELECT last_seen FROM terms").fetchone()[0] == "2026-10-16"
+
+
+def test_a_url_echo_is_kept_but_never_scheduled_for_a_review(tmp_path):
+    conn = store.connect(tmp_path)
+    store.record(conn, [_lead("bitbucket", ["sitemap"]), _lead("figcraft", ["breakout"])], date(2026, 9, 25))
+
+    assert conn.execute("SELECT status FROM terms WHERE canonical='bitbucket'").fetchone()[0] == "echo"
+    assert [t for t, _, _ in store.due(conn, DAY, 14, 5)] == ["figcraft"]
+
+
+def test_record_run_keeps_the_days_cost_and_stats(tmp_path):
+    conn = store.connect(tmp_path)
+
+    store.record_run(conn, "daily", "2026-10-17T20:53:08", "2026-10-17T20:59:29", 150000,
+                     {"leads": 20, "terms": 19}, ["toolify: no URLs read"])
+
+    command, started, finished, cost, stats, errors = conn.execute(
+        "SELECT command, started_at, finished_at, cost_micros, stats, errors FROM runs").fetchone()
+    assert (command, started, finished, cost) == ("daily", "2026-10-17T20:53:08", "2026-10-17T20:59:29", 150000)
+    assert json.loads(stats) == {"leads": 20, "terms": 19}
+    assert json.loads(errors) == ["toolify: no URLs read"]
+
+
+def test_twins_are_found_with_the_earlier_row_kept(tmp_path):
+    conn = store.connect(tmp_path)
+    late = conn.execute("INSERT INTO terms (canonical, first_seen, last_seen) VALUES ('mirelo sfx 2.0','2026-10-17','2026-10-17')").lastrowid
+    early = conn.execute("INSERT INTO terms (canonical, first_seen, last_seen) VALUES ('mirelo sfx','2026-10-15','2026-10-15')").lastrowid
+
+    assert store.twins(conn) == [(early, late)]
+
+
+def test_a_later_echo_does_not_demote_a_name_a_real_signal_found(tmp_path):
+    conn = store.connect(tmp_path)
+    store.record(conn, [_lead("mirelo sfx 2.0", ["x"], named=0.9)], date(2026, 10, 15))
+
+    store.record(conn, [_lead("mirelo sfx 2.0", ["sitemap"])], date(2026, 10, 16))
+
+    assert conn.execute("SELECT status FROM terms").fetchone()[0] == "new"
+    assert [t for t, _, _ in store.due(conn, date(2026, 11, 1), 14, 5)] == ["mirelo sfx 2.0"]
+
+
+def test_pending_does_not_count_echoes(tmp_path):
+    conn = store.connect(tmp_path)
+    store.record(conn, [_lead("bitbucket", ["sitemap"]), _lead("figcraft", ["breakout"])], DAY)
+
+    assert store.summary(conn, DAY)["pending"] == 1
+
+
+def test_a_term_with_no_signal_is_not_an_echo(tmp_path):
+    conn = store.connect(tmp_path)
+    store.record(conn, [{"term": "mystery", "kinds": [], "signals": []}], DAY)
+
+    assert conn.execute("SELECT status FROM terms").fetchone()[0] == "new"
+
+
+def test_merging_keeps_one_review_per_window_and_the_newer_one_wins(tmp_path):
+    conn = store.connect(tmp_path)
+    a = conn.execute("INSERT INTO terms (canonical, first_seen, last_seen) VALUES ('spark open','2026-10-15','2026-10-15')").lastrowid
+    b = conn.execute("INSERT INTO terms (canonical, first_seen, last_seen) VALUES ('muse spark open','2026-10-16','2026-10-16')").lastrowid
+    conn.execute("INSERT INTO reviews (term_id, days, checked_at, search_rise, lead_days, metrics)"
+                 " VALUES (?,14,'2026-10-17',1,2,'{\"verdict\":\"hit\"}')", (a,))
+    conn.execute("INSERT INTO reviews (term_id, days, checked_at, search_rise, lead_days, metrics)"
+                 " VALUES (?,14,'2026-10-18',0,NULL,'{\"verdict\":\"miss\"}')", (b,))
+    conn.commit()
+
+    store.merge_terms(conn, a, b)
+
+    rows = conn.execute("SELECT term_id, days, checked_at, search_rise, lead_days, metrics FROM reviews").fetchall()
+    assert len(rows) == 1 and rows[0][0] == a
+    assert rows[0][2:] == ("2026-10-18", 0, None, '{"verdict":"miss"}')   # newer row wins whole

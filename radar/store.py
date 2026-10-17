@@ -126,17 +126,25 @@ def _term_id(conn: sqlite3.Connection, canonical: str) -> int | None:
     return row[0] if row else None
 
 
+def _refresh_status(conn: sqlite3.Connection, term_id: int) -> None:
+    """`echo` only when every signal this term ever had is a URL listing; add a real signal and
+    it becomes a name again. The status never goes from `new` back to `echo`."""
+    status = conn.execute("SELECT status FROM terms WHERE id = ?", (term_id,)).fetchone()[0]
+    if status not in (None, "new", "echo"):
+        return                                  # watching / archived: a reviewed term keeps its state
+    sources = {r[0] for r in conn.execute("SELECT source FROM term_signals WHERE term_id = ?", (term_id,))}
+    wanted = "echo" if sources and sources <= select.URL_KINDS else "new"
+    if wanted != status:
+        conn.execute("UPDATE terms SET status = ? WHERE id = ?", (wanted, term_id))
+
+
 def record(conn: sqlite3.Connection, rows: list[dict], today: date | None = None) -> int:
     """rows: report leads with term, kinds (signal names), signals (report lines),
-    optional named and variants. Forms that name one thing share a term (entity.cluster)."""
+    optional named and variants. Forms that name one thing share a term (entity.cluster),
+    including a twin the migrated history stored under another spelling."""
     day = (today or date.today()).isoformat()
     prepared = [{"term": r["term"], "day": day, "source": (r.get("kinds") or [""])[0], "row": r}
                 for r in rows]
-    # Look a term up by its normal form, so a spelling that only differs by separators does not
-    # add a second row for a name the migrated history already knows.
-    stored = {entity.normalize(canonical): (tid, aliases, score)
-              for tid, canonical, aliases, score in
-              conn.execute("SELECT id, canonical, aliases, name_score FROM terms")}
     for group in entity.cluster(prepared):
         members = [m["row"] for m in group["rows"]]
         evidence: dict[str, str | None] = {}
@@ -146,36 +154,125 @@ def record(conn: sqlite3.Connection, rows: list[dict], today: date | None = None
                 evidence.setdefault(kind, m["signals"][i] if i < len(m.get("signals", [])) else None)
             forms += [m["term"], *m.get("variants", [])]
         named = next((m["named"] for m in reversed(members) if m.get("named") is not None), None)
-        aliases = sorted(set(forms))
+        canonical = group["canonical"]
 
-        old = stored.get(entity.normalize(group["canonical"]))
-        if old is None:
-            cur = conn.execute(
-                "INSERT INTO terms (canonical, aliases, first_seen, last_seen, name_score, window,"
-                " status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
-                (group["canonical"], json.dumps(aliases, ensure_ascii=False), day, day, named,
-                 select.lane(evidence), "new", day, day))
-            term_id = cur.lastrowid
-        else:
-            term_id, kept, kept_score = old
-            aliases = sorted(set(json.loads(kept)) | set(aliases))
+        # A twin stored under another spelling is the same thing: fold it in instead of
+        # adding a row that would be reviewed, and paid for, on its own.
+        existing = [(tid, canonical_, aliases, score, first)
+                    for tid, canonical_, aliases, score, first in
+                    conn.execute("SELECT id, canonical, aliases, name_score, first_seen FROM terms")]
+        matches = [e for e in existing if e[1] == canonical or entity.same_entity(canonical, e[1])]
+        if matches:
+            keep = min(matches, key=lambda e: (e[4], e[0]))
+            for other in matches:
+                if other[0] != keep[0]:
+                    merge_terms(conn, keep[0], other[0])
+            kept_aliases, kept_score = conn.execute(
+                "SELECT aliases, name_score FROM terms WHERE id = ?", (keep[0],)).fetchone()
+            aliases = sorted(set(json.loads(kept_aliases)) | set(forms) | {m[1] for m in matches})
             conn.execute("UPDATE terms SET last_seen = ?, aliases = ?, name_score = ?, updated_at = ?"
                          " WHERE id = ?",
                          (day, json.dumps(aliases, ensure_ascii=False),
-                          named if named is not None else kept_score, day, term_id))
+                          named if named is not None else kept_score, day, keep[0]))
+            term_id = keep[0]
+        else:
+            cur = conn.execute(
+                "INSERT INTO terms (canonical, aliases, first_seen, last_seen, name_score, window,"
+                " status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
+                (canonical, json.dumps(sorted(set(forms)), ensure_ascii=False), day, day, named,
+                 select.lane(evidence), "new", day, day))
+            term_id = cur.lastrowid
         for kind, note in evidence.items():
             if not conn.execute("SELECT 1 FROM term_signals WHERE term_id = ? AND source = ?",
                                 (term_id, kind)).fetchone():
                 conn.execute("INSERT INTO term_signals (term_id, source, first_seen, evidence)"
                              " VALUES (?,?,?,?)", (term_id, kind, day, note))
+        _refresh_status(conn, term_id)
     conn.commit()
     return len(rows)
+
+def merge_terms(conn: sqlite3.Connection, kept_id: int, drop_id: int) -> None:
+    """Fold one row into another: aliases and dates widen, signals keep one row per source,
+    reviews follow the term. Never drops a signal or a review."""
+    kept = conn.execute("SELECT canonical, aliases, first_seen, last_seen, name_score FROM terms WHERE id = ?",
+                        (kept_id,)).fetchone()
+    drop = conn.execute("SELECT canonical, aliases, first_seen, last_seen, name_score FROM terms WHERE id = ?",
+                        (drop_id,)).fetchone()
+    aliases = sorted(set(json.loads(kept[1])) | set(json.loads(drop[1])) | {kept[0], drop[0]})
+    for _id, source, first_seen, evidence in conn.execute(
+            "SELECT id, source, first_seen, evidence FROM term_signals WHERE term_id = ?", (drop_id,)).fetchall():
+        same = conn.execute("SELECT id, first_seen FROM term_signals WHERE term_id = ? AND source = ?",
+                            (kept_id, source)).fetchone()
+        if same:
+            conn.execute("UPDATE term_signals SET first_seen = ? WHERE id = ?",
+                         (min(same[1], first_seen), same[0]))
+            conn.execute("DELETE FROM term_signals WHERE id = ?", (_id,))
+        else:
+            conn.execute("UPDATE term_signals SET term_id = ? WHERE id = ?", (kept_id, _id))
+    for rid, days, checked in conn.execute(
+            "SELECT id, days, checked_at FROM reviews WHERE term_id = ?", (drop_id,)).fetchall():
+        same = conn.execute("SELECT id, checked_at FROM reviews WHERE term_id = ? AND days = ?",
+                            (kept_id, days)).fetchone()
+        if same is None:
+            conn.execute("UPDATE reviews SET term_id = ? WHERE id = ?", (kept_id, rid))
+        elif checked > same[1]:                 # one review per window; the newer reading wins whole
+            conn.execute("DELETE FROM reviews WHERE id = ?", (same[0],))
+            conn.execute("UPDATE reviews SET term_id = ? WHERE id = ?", (kept_id, rid))
+        else:
+            conn.execute("DELETE FROM reviews WHERE id = ?", (rid,))
+    conn.execute("DELETE FROM terms WHERE id = ?", (drop_id,))     # free the canonical first
+    conn.execute("UPDATE terms SET canonical = ?, aliases = ?, first_seen = ?, last_seen = ?,"
+                 " name_score = ? WHERE id = ?",
+                 (entity.canonical([kept[0], drop[0]]), json.dumps(aliases, ensure_ascii=False),
+                  min(kept[2], drop[2]), max(kept[3], drop[3]),
+                  kept[4] if kept[4] is not None else drop[4], kept_id))
+
+
+def twins(conn: sqlite3.Connection) -> list[tuple[int, int]]:
+    """(keep_id, drop_id): two rows that name one thing. The earlier row is kept."""
+    rows = [(i, c, f) for i, c, f in conn.execute("SELECT id, canonical, first_seen FROM terms")]
+    found = []
+    for i in range(len(rows)):
+        for j in range(i + 1, len(rows)):
+            if entity.same_entity(rows[i][1], rows[j][1]):
+                keep, drop = sorted((rows[i], rows[j]), key=lambda r: (r[2], r[0]))[:2]
+                found.append((keep[0], drop[0]))
+    return found
+
+
+ECHO_WHERE = ("COALESCE(status, 'new') != 'echo' AND id IN (SELECT term_id FROM term_signals"
+              " GROUP BY term_id HAVING SUM(source NOT IN ('sitemap', 'newsite')) = 0)")
+
+
+def echo_ids(conn: sqlite3.Connection) -> list[int]:
+    """Terms that only a sitemap or a new-site listing found: an echo of a name that already
+    exists (bitbucket, zotero), not a new word."""
+    return [r[0] for r in conn.execute(f"SELECT id FROM terms WHERE {ECHO_WHERE}")]
+
+
+def mark_echoes(conn: sqlite3.Connection) -> int:
+    """Keep the echo rows, but never spend a Trends review on one."""
+    cur = conn.execute(f"UPDATE terms SET status = 'echo' WHERE {ECHO_WHERE}")
+    conn.commit()
+    return cur.rowcount
+
+
+def record_run(conn: sqlite3.Connection, command: str, started_at: str, finished_at: str,
+               cost_micros: int, stats: dict, errors: list[str]) -> int:
+    """The day's money and outcome, so the budget can be read instead of remembered."""
+    cur = conn.execute("INSERT INTO runs (command, started_at, finished_at, cost_micros, stats, errors)"
+                       " VALUES (?,?,?,?,?,?)",
+                       (command, started_at, finished_at, cost_micros, json.dumps(stats, ensure_ascii=False),
+                        json.dumps(errors, ensure_ascii=False)))
+    conn.commit()
+    return cur.lastrowid
 
 
 def due(conn: sqlite3.Connection, today: date, after_days: int, limit: int) -> list[tuple[str, date, list[str]]]:
     cutoff = (today - timedelta(days=after_days)).isoformat()
     rows = conn.execute(
-        "SELECT canonical, first_seen, aliases FROM terms t WHERE first_seen <= ? AND NOT EXISTS"
+        "SELECT canonical, first_seen, aliases FROM terms t WHERE first_seen <= ?"
+        " AND COALESCE(t.status, 'new') != 'echo' AND NOT EXISTS"
         " (SELECT 1 FROM reviews r WHERE r.term_id = t.id AND r.days = ?)"
         " ORDER BY first_seen, canonical LIMIT ?", (cutoff, REVIEW_DAYS, limit)).fetchall()
     return [(t, date.fromisoformat(f), json.loads(a)) for t, f, a in rows]
@@ -230,8 +327,8 @@ def summary(conn: sqlite3.Connection, today: date | None = None) -> dict:
     for s in by.values():
         leads = s.pop("leads")
         s["median_lead"] = statistics.median(leads) if leads else None
-    pending = conn.execute("SELECT count(*) FROM terms t WHERE NOT EXISTS"
-                           " (SELECT 1 FROM reviews r WHERE r.term_id = t.id AND r.days = ?)",
+    pending = conn.execute("SELECT count(*) FROM terms t WHERE COALESCE(t.status, 'new') != 'echo'"
+                           " AND NOT EXISTS (SELECT 1 FROM reviews r WHERE r.term_id = t.id AND r.days = ?)",
                            (REVIEW_DAYS,)).fetchone()[0]
     return {"by_signal": by, "pending": pending, "window_days": SUMMARY_WINDOW}
 

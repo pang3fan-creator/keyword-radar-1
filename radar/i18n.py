@@ -64,8 +64,8 @@ T = {
     "kind_sitemap": ("③ sitemaps", "③ 竞品"), "kind_newsite": ("③ new site", "③ 新站"), "kind_watch": ("watch", "观察词"),
     # daily report
     "title": ("## New-term radar", "## 新词雷达"),
-    "leads_h": ("### Candidate new terms (names first; terms you already cover are marked)",
-                "### 候选新词(判为专有名词的排前面;已覆盖的会标出)"),
+    "leads_h": ("### Candidate new terms (visible slots taken in turn by signal; terms you already cover are marked)",
+                "### 候选新词(名额按信号轮发;已覆盖的会标出)"),
     "tags_note": ("🎬 video · 🎙 voice · 🖼 image: what the thing makes, the usual order of what visitors pay for (video > voice > image > text). "
                   "⚡ = a post with 1,000+ likes walks through a manual workflow or rides a trend: a one-click tool nobody has built yet. Read the posts before acting on a tag.",
                   "🎬 视频 · 🎙 语音 · 🖼 图片:它产出什么,一般用户愿意付费的顺序是 视频 > 语音 > 图片 > 文字。"
@@ -100,6 +100,8 @@ T = {
     "hit_intro": ("Hit rate over the last {days} days ({pending} awaiting review):", "近 {days} 天的命中率(待复盘 {pending} 个):"),
     "hit_cols": ("| Signal | Reviewed | Hits | Hit rate | Median days ahead |", "| 信号 | 复盘 | 命中 | 命中率 | 提前天数中位数 |"),
     "status_h": ("### Data status", "### 数据状态"),
+    "st_quota": ("- ⚠ {signal} holds {n}/{total} of the visible names: the quota could not rebalance them",
+                 "- ⚠ {signal} 占了 {n}/{total} 个名字名额:其余信号没能提供可平衡的候选"),
     "st_x": ("- ① X: {state}", "- ① X:{state}"), "st_hf": ("- ① HF: {state}", "- ① HF:{state}"),
     "st_x_ok": ("{answered}/{accounts} accounts, {posts} posts", "{answered}/{accounts} 个账号,{posts} 条帖子"),
     "st_x_first": (", first run: vocabulary built, nothing reported", ",首次运行,只建词表"),

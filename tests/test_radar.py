@@ -286,7 +286,7 @@ def test_store_upserts_and_merges(tmp_path):
 
 def test_store_due_verdict_and_summary(tmp_path):
     conn = store.connect(tmp_path)
-    store.record(conn, [_lead("strata", ["x", "breakout"]), _lead("flop", ["sitemap"])], date(2026, 9, 25))
+    store.record(conn, [_lead("strata", ["x", "breakout"]), _lead("flop", ["hf"])], date(2026, 9, 25))
     store.record(conn, [_lead("young", ["hf"])], date(2026, 10, 8))
     today = date(2026, 10, 10)
     assert [d[0] for d in store.due(conn, today, 14, 5)] == ["flop", "strata"]
@@ -295,7 +295,7 @@ def test_store_due_verdict_and_summary(tmp_path):
     assert store.due(conn, today, 14, 5) == []
     summ = store.summary(conn, today)
     assert summ["pending"] == 1 and summ["by_signal"]["x"] == {"checked": 1, "hit": 1, "median_lead": 2}
-    assert summ["by_signal"]["sitemap"] == {"checked": 1, "hit": 0, "median_lead": None}
+    assert summ["by_signal"]["hf"] == {"checked": 1, "hit": 0, "median_lead": None}
 
 
 def test_store_recent_sources_are_only_x_and_hf(tmp_path):
@@ -402,6 +402,9 @@ def test_daily_run_writes_a_report_when_every_signal_is_down(tmp_path, monkeypat
                      "--skip", "newsites,review"]) == 0
     text = out.read_text()
     assert text.count("network is down") >= 4 and out.with_suffix(".json").exists()
+    command, cost, errors = store.connect(tmp_path / "s").execute(
+        "SELECT command, cost_micros, errors FROM runs").fetchone()
+    assert command == "daily" and cost == 0 and "network is down" in errors     # the day is on record
 
 
 def test_daily_report_in_chinese(tmp_path, monkeypatch):
@@ -1107,3 +1110,13 @@ def test_a_lead_first_seen_today_is_flagged_new(tmp_path):
     got = {r["term"]: r["new"] for r in store.leads(conn, days=7, today=date(2026, 10, 11))}
 
     assert got == {"fresh": True, "strata": False}
+
+
+def test_the_report_says_when_one_signal_took_every_visible_slot():
+    lead = [{"term": f"x name {i}", "kinds": ["x"], "named": 0.9, "signals": [], "examples": [],
+             "variants": [], "known": "", "format": "text"} for i in range(20)]
+
+    blocks = {k: {"skipped": True} for k in ("x", "hf", "breakout", "sitemap")}
+    lines = report._status_lines(blocks, {}, lead)
+
+    assert any("holds 20/20" in line for line in lines), lines

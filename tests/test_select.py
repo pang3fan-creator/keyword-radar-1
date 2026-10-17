@@ -50,3 +50,16 @@ def test_the_order_keeps_every_row_and_is_deterministic():
 
     assert [r["term"] for r in select.order(rows)] == once
     assert sorted(once) == sorted(r["term"] for r in rows)
+
+
+def test_a_lopsided_day_says_the_quota_never_applied():
+    lopsided = [_row(f"x name {i}", ["x"], 0.9) for i in range(20)]
+
+    assert select.quota_note(select.order(lopsided, 20)) == ("x", 20, 20)
+
+
+def test_a_balanced_day_says_nothing():
+    rows = ([_row(f"x name {i}", ["x"], 0.9) for i in range(5)]
+            + [_row(f"hf name {i}", ["hf"], 0.9) for i in range(5)])
+
+    assert select.quota_note(select.order(rows, 10)) is None

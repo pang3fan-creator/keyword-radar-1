@@ -70,8 +70,12 @@ def _state(block: dict, ok: str) -> str:
     return block.get("error") or (t("skipped") if block.get("skipped") else ok)
 
 
+def cost_micros(*blocks: dict) -> int:
+    return sum(int(b.get("cost_micros") or 0) for b in blocks if isinstance(b, dict))
+
+
 def _cost(*blocks: dict) -> str:
-    return f"${sum(int(b.get('cost_micros') or 0) for b in blocks) / 1e6:.3f}"
+    return f"${cost_micros(*blocks) / 1e6:.3f}"
 
 
 def topic_lines(cfg: dict, lead: list[dict], b: dict[str, dict], gsc: dict) -> list[str]:
@@ -220,7 +224,7 @@ def _review_lines(cfg: dict, rev: dict, summ: dict) -> list[str]:
     return lines
 
 
-def _status_lines(b: dict[str, dict], extra: dict[str, dict]) -> list[str]:
+def _status_lines(b: dict[str, dict], extra: dict[str, dict], lead: list[dict]) -> list[str]:
     x, hf, bo, sm = b["x"], b["hf"], b["breakout"], b["sitemap"]
     lines = ["", t("status_h"), ""]
     if not x.get("skipped"):
@@ -249,6 +253,9 @@ def _status_lines(b: dict[str, dict], extra: dict[str, dict]) -> list[str]:
     for key, label in (("judge", "st_judge"), ("record", "st_record")):
         if extra.get(key, {}).get("error"):
             lines.append(t(label, state=extra[key]["error"]))
+    note = select.quota_note(lead, SHOWN)
+    if note:
+        lines.append(t("st_quota", n=note[1], total=note[2], signal=t("kind_" + note[0])))
     return lines
 
 
@@ -278,7 +285,7 @@ def daily(cfg: dict, lead: list[dict], b: dict[str, dict], gsc: dict, rev: dict,
     lines += _tutorial_lines(extra.get("tutorials", {"skipped": True}))
     lines += _gsc_lines(gsc)
     lines += _review_lines(cfg, rev, summ)
-    lines += _status_lines(b, extra)
+    lines += _status_lines(b, extra, lead)
     lines.append(t("cost", cost=_cost(b["x"], rev, b.get("newsite", {}), b.get("ask", {}), extra.get("usecases", {}),
                                       extra.get("tutorials", {}))))
     return "\n".join(lines) + "\n"

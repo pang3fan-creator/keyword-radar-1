@@ -15,6 +15,8 @@ from __future__ import annotations
 # sitemap echo last. Shared with report.py, which labels the blocks in this order.
 EARLY = ["x", "hf", "breakout", "sitemap", "newsite", "revenue", "ask", "usecase", "cosearch", "watch"]
 SLOW = {"usecase", "cosearch"}      # combo words, not names: they earn keyword rows, not a name slot
+URL_KINDS = {"sitemap", "newsite"}  # a competitor publishing a page is an echo of a name, not a new one
+QUOTA = 0.6                         # no signal should hold more than this share of the visible names
 
 
 def lane(kinds) -> str | None:
@@ -59,3 +61,17 @@ def order(rows: list[dict], limit: int = 20) -> list[dict]:
     taken = {id(r) for r in picked}
     rest = sorted((r for r in fast if id(r) not in taken), key=_rank)
     return picked + rest + slow
+
+
+def quota_note(rows: list[dict], limit: int = 20) -> tuple[str, int, int] | None:
+    """Which signal swallowed the visible names, when one did. A quota that never applied
+    because only one signal had names is not a bug, but it must not pass in silence: a day
+    like that is the day the radar reads one kind of lead and calls it discovery."""
+    top = rows[:limit]
+    if not top:
+        return None
+    counts: dict[str, int] = {}
+    for r in top:
+        counts[EARLY[_primary(r)]] = counts.get(EARLY[_primary(r)], 0) + 1
+    signal, count = max(counts.items(), key=lambda kv: kv[1])
+    return (signal, count, len(top)) if count > QUOTA * len(top) else None

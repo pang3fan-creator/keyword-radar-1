@@ -66,6 +66,7 @@ Python 3.10 or newer. The runtime uses only the standard library. The project ve
 .venv/bin/python -m radar sources --out sources.md   # X + HF only
 .venv/bin/python -m radar keywords "name" --json     # on-demand keyword table
 .venv/bin/python -m radar leads --days 7             # free; inspect stored leads
+.venv/bin/python scripts/merge_terms.py --dry-run    # one-off: fold twin terms, mark URL echoes
 ```
 
 A full `daily` costs about **$0.34** and takes 10–15 minutes with the current 35 X accounts. `keywords` costs about $0.05 per name plus $0.09 per call. State the cost before a paid run, and do not run `daily` twice in a row (the second run reports only the delta).
@@ -119,15 +120,24 @@ M1 completed on 2026-10-17 (`516c6a2..be2d9f7`):
 
 - `radar/entity.py`: one term per thing. 100-pair calibration set (50 merge, 50 do not, 10 pairs taken from the real lead table); an extra token must be a maker, a format, a version or a size, never a variant.
 - `radar/select.py`: the visible slots alternate across signals. On the M0 candidates the top 20 went from 20 X to x 6 / hf 6 / breakout 3 / sitemap 5, and the five names read became `deepseek v4.1 flash 1017`, `figcraft`, `gpt 6 astra pro`, `beam 1.0`, `git ai`.
-- `known_terms` match whole tokens; a lead is new when `first_seen` is today.
+- `known_terms` match whole tokens; a lead is `new` when `first_seen` is today (the keyword table's own `新词?` column still reads the Trends baseline; M2).
 - `store.py` reads and writes `terms` / `term_signals` / `reviews`, and `connect()` creates `SCHEMA_NEXT`. `leads` keeps the migrated history and is no longer written.
 - Migration: 75 leads became 75 terms, 76 signals and 2 runs; the pre-migration DB is at `state/backup-2026-10-17-pre-migration/`.
 
+M1 debt round, same day (PI review):
+
+- `scripts/merge_terms.py` folded the 7 twin terms the migration left (`mirelo sfx` + `mirelo sfx 2.0`, …) into one row each: aliases, signals and reviews move with the kept row. `record()` now also folds a twin it meets, so no new pair is created.
+- A term only a sitemap or a new-site listing found is kept but marked `status='echo'`; `due()` never schedules one and `summary()['pending']` does not count one. 21 rows are echoes, so the 2026-10-31 review budget is not spent on `bitbucket` and friends. The status is computed from every signal the term ever had, so it only moves echo → new: a real signal that found the name keeps it in the review queue even when the next day brings only a sitemap echo.
+- `daily` writes a `runs` row: command, ISO start and finish, `cost_micros`, lead and review counts, and the day's errors. The 2026-10-17T20:53 run is in the table (150000 micro-USD, 6m21s); the two migrated rows keep the earlier runs.
+- The report's data-status section now says when one signal took the visible slots: a quota that never applied is not a silent success.
+- Pre-merge DB: `state/backup-2026-10-17-pre-merge/`.
+
 Still open after M1:
 
-- No real `daily` has run since the cutover, so the new write path is covered by tests only; one paid run (about $0.34) is the next step.
 - `reviews` holds no real data before 2026-10-31, when the first 14-day window closes.
 - Reading is capped at five names a day and does not rotate: a name ranked 6th or below is only read again when its signal fires again (found in the M0 replay).
+- The visible table and the judge still work per surface form; entity resolution runs before storage and before the read, not before the report rows.
+- `record()` compares each group against every stored term (`same_entity` is O(terms) per group). Fine at 87 rows, revisit before `terms` reaches a few thousand.
 
 Next milestone (M2): leading indicators, no hard `min_volume` gate, the benchmark basket and the measurement-integrity golden set.
 

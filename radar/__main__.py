@@ -37,7 +37,7 @@ import argparse
 import json
 import os
 import sys
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 from . import asks, breakout, config, env, gsc, new_sites, notify, pains, report, review, revenue, sitemaps, sources, store, usecases
@@ -79,6 +79,7 @@ def cmd_sources(args, cfg: dict, state: Path) -> int:
 
 
 def cmd_daily(args, cfg: dict, state: Path) -> int:
+    started = datetime.now().isoformat(timespec="seconds")
     weekly = args.new_sites or date.today().weekday() == cfg["new_sites"]["weekday"]
     blocks = {
         "x": run(lambda: sources.x_new(cfg, state), "x" in args.skip),
@@ -108,6 +109,14 @@ def cmd_daily(args, cfg: dict, state: Path) -> int:
                             "usecases" in args.skip or not cfg["usecases"]["per_day"])
     run(lambda: store.record(conn, report.usecase_leads(extra["usecases"])))
     rev = run(lambda: review.review(cfg, conn), "review" in args.skip)
+    # What the day cost and what came back, so the budget is a query and not a memory.
+    spent = report.cost_micros(blocks["x"], rev, blocks.get("newsite", {}), blocks.get("ask", {}),
+                               extra.get("usecases", {}), extra.get("tutorials", {}))
+    errors = [f"{k}: {v['error']}" for k, v in {**blocks, "gsc": found, **extra}.items()
+              if isinstance(v, dict) and v.get("error")]
+    run(lambda: {"run": store.record_run(
+        conn, "daily", started, datetime.now().isoformat(timespec="seconds"), spent,
+        {"leads": len(report.to_record(cfg, lead)), "reviewed": len(rev.get("checked") or [])}, errors)})
     summ = run(lambda: store.summary(conn))
     text = report.daily(cfg, lead, blocks, found, rev, summ, extra)
     if args.out:
