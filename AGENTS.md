@@ -141,6 +141,15 @@ Still open after M1:
 
 Next milestone (M2): leading indicators, no hard `min_volume` gate, the benchmark basket and the measurement-integrity golden set.
 
+## Before you hand work over
+
+Three review rounds found the same class of miss: the handover said "done" and the repository said otherwise. Run this list first, and answer each line in the handover message.
+
+- Numbers: every count you quote (terms, signals, pending, runs, cost, test counts) is re-read from the database or the command output, never remembered.
+- Silence: a constraint that did not hold says so in the report or the data-status section. A dead quota, a skipped source, a failed benchmark or a downgraded term that passes without a line is a bug.
+- Half-done: an item marked done traces to a line of code. If only the storage half or the read half landed, write "partial, Mx".
+- Orphans: no table that nobody writes or nobody reads, no function added without a caller, no promise in these docs without a check.
+
 ## Git and collaboration
 
 - `origin` is `https://github.com/pang3fan-creator/keyword-radar.git`; the branch is `main`.
