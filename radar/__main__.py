@@ -35,11 +35,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from datetime import date
 from pathlib import Path
 
-from . import asks, breakout, config, gsc, new_sites, notify, pains, report, review, revenue, sitemaps, sources, store, usecases
+from . import asks, breakout, config, env, gsc, new_sites, notify, pains, report, review, revenue, sitemaps, sources, store, usecases
 from .i18n import t
 
 SKIPPABLE = {"x", "hf", "breakout", "sitemaps", "newsites", "revenue", "asks", "gsc", "review", "judge", "usecases", "tutorials"}
@@ -176,6 +177,8 @@ def serve_mcp() -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    if not os.environ.get("RADAR_SKIP_ENV_FILE"):
+        env.load(Path(__file__).resolve().parent.parent / ".env")
     if (sys.argv[1:] if argv is None else argv)[:1] == ["mcp"]:
         return serve_mcp()
     prog = "python -m radar" if __package__ == "radar" else "new-term-radar"  # installed, the package has another name

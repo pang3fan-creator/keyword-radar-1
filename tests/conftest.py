@@ -7,6 +7,7 @@ from radar import aisa, config, goanyapi, i18n
 
 @pytest.fixture(autouse=True)
 def english(monkeypatch):
+    monkeypatch.setenv("RADAR_SKIP_ENV_FILE", "1")   # never read the developer's real .env in a test
     i18n.set_lang("en")
     monkeypatch.delenv("GOANYAPI_API_KEY", raising=False)   # the optional source is off unless a test turns it on
 

@@ -145,9 +145,11 @@ Python 3.10 or newer. The radar uses only the standard library.
 git clone https://github.com/zhuyansen/new-term-radar
 cd new-term-radar
 cp config.example.json config.json      # then edit: your X accounts, sitemaps, topics
-export AISA_API_KEY=...                 # from https://go.aisa.one/yansen-zhu; or `aisa login` with the AIsa CLI
+cp .env.example .env                    # then fill AISA_API_KEY (and optional GOANYAPI_API_KEY)
 python -m radar daily --out report.md
 ```
+
+The CLI loads `.env` from the repository root; the values in that file override same-named shell variables, so you do not need to export keys in `~/.zshrc`.
 
 The first run builds its snapshots: yesterday's X vocabulary, star counts and sitemap URLs do not exist yet, so only GitHub breakouts (which need no yesterday) are reported. From the second run on, every signal reports what changed.
 
