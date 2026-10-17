@@ -1085,3 +1085,13 @@ def test_tutorial_asks_only_for_leads_marked_one_click(cfg, monkeypatch):
     assert [x["term"] for x in out["leads"]] == ["opus blender game"] and out["cost_micros"] == 2000 + 1000
     text = "\n".join(report._tutorial_lines(out))
     assert "Too many manual steps (wants a tool, 1) → one click blender export" in text
+
+
+def test_a_lead_first_seen_today_is_flagged_new(tmp_path):
+    conn = store.connect(tmp_path)
+    store.record(conn, [_lead("strata", ["x"])], date(2026, 10, 10))
+    store.record(conn, [_lead("fresh", ["hf"])], date(2026, 10, 11))
+
+    got = {r["term"]: r["new"] for r in store.leads(conn, days=7, today=date(2026, 10, 11))}
+
+    assert got == {"fresh": True, "strata": False}

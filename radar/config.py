@@ -8,7 +8,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from . import i18n, terms
+from . import entity, i18n, terms
 
 DEFAULTS = {
     "lang": "en",
@@ -53,11 +53,20 @@ def load(path: Path) -> dict:
     return cfg
 
 
+def _covers(words: list[str], keys: list[str]) -> bool:
+    """`keys` appears in `words` as whole tokens, not as a substring."""
+    return len(keys) <= len(words) and any(words[i:i + len(keys)] == keys
+                                           for i in range(len(words) - len(keys) + 1))
+
+
 def known(cfg: dict, term: str) -> str:
     """The entry of known_terms that already covers this term, if any: what you have a
-    page for, or never want reported."""
-    for k in cfg["known_terms"]:
-        k = k.lower()
-        if k and (k in term or term in k):
-            return k
-    return ""
+    page for, or never want reported. Matched on word boundaries, so `ai` does not hide
+    `openai`; the longest entry wins."""
+    words = entity.tokens(term)
+    best, best_len = "", 0
+    for entry in cfg["known_terms"]:
+        keys = entity.tokens(entry)
+        if keys and len(keys) > best_len and (_covers(words, keys) or _covers(keys, words)):
+            best, best_len = entry, len(keys)
+    return best

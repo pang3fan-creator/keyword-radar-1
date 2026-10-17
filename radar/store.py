@@ -180,9 +180,11 @@ def summary(conn: sqlite3.Connection, today: date | None = None) -> dict:
 
 def leads(conn: sqlite3.Connection, days: int = 7, today: date | None = None) -> list[dict]:
     """Leads seen in the last `days` days, newest first, with their review verdict when there is one."""
+    day = (today or date.today()).isoformat()
     since = ((today or date.today()) - timedelta(days=days)).isoformat()
     rows = conn.execute("SELECT term, first_seen, last_seen, signals, notes, named, variants, verdict, lead_days FROM leads "
                         "WHERE last_seen >= ? ORDER BY last_seen DESC, first_seen DESC, term", (since,)).fetchall()
     return [{"term": t, "first_seen": f, "last_seen": l, "signals": json.loads(k), "note": (json.loads(n) or [""])[-1],
-             "name_score": named, "variants": json.loads(v), "verdict": verdict, "days_ahead": ahead}
+             "name_score": named, "variants": json.loads(v), "verdict": verdict, "days_ahead": ahead,
+             "new": f == day}                     # new by when we first saw it, not by a Trends baseline
             for t, f, l, k, n, named, v, verdict, ahead in rows]
