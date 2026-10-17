@@ -52,7 +52,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import date, timedelta
 from pathlib import Path
 
-from . import UA, aisa, competition, goanyapi, review, snap
+from . import UA, aisa, competition, entity, goanyapi, review, snap
 
 POSTS_KEPT = 12
 POST_CHARS = 400
@@ -550,7 +550,11 @@ def names_to_read(leads_today: list[dict], recent_sources: list[dict]) -> list[s
         named = r.get("named")
         if READ_KINDS & set(r.get("kinds", [])) and (named is None or named >= READ_MIN) and r["term"] not in out:
             out.append(r["term"])
-    return out
+    # One name per thing (docs/05 §4.2b): both spellings of a name cost a paid read each.
+    first = {}
+    for group in entity.cluster([{"term": t} for t in out]):
+        first[group["canonical"]] = min(out.index(alias) for alias in group["aliases"] if alias in out)
+    return [name for name, _ in sorted(first.items(), key=lambda kv: kv[1])]
 
 
 def degraded(uc: dict) -> bool:

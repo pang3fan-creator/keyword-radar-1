@@ -82,7 +82,7 @@ def same_entity(a: str, b: str) -> bool:
 
 def canonical(forms: list[str]) -> str:
     """The form to store: the longest one with the company and the format stripped off."""
-    best: tuple[int, str] = (-1, "")
+    best: tuple[int, bool, str] = (-1, False, "")
     for form in forms:
         ts = tokens(form)
         while ts and ts[0] in COMPANIES:
@@ -90,9 +90,9 @@ def canonical(forms: list[str]) -> str:
         while ts and (ts[-1] in FORMATS or SIZE.match(ts[-1]) or ts[-1] in {"ckpt", "onnx"}):
             ts = ts[:-1]
         text = " ".join(ts) or normalize(form)
-        if (len(ts), text) > best:
-            best = (len(ts), text)
-    return best[1]
+        if (len(ts), text == normalize(text), text) > best:
+            best = (len(ts), text == normalize(text), text)
+    return best[2]
 
 
 def cluster(rows: list[dict]) -> list[dict]:

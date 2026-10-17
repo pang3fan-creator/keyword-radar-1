@@ -754,6 +754,15 @@ def test_only_things_are_read_for_generic_terms_not_words_that_surged():
     assert usecases.names_to_read(today, recent) == ["photocraft", "hailuo", "qwen image 2.1"]
 
 
+def test_two_writings_of_one_name_are_read_once():
+    today = [{"term": "deepseek-v4.1-flash-1017", "kinds": ["x"], "named": 1.0},
+             {"term": "deepseek v4.1 flash 1017", "kinds": ["hf"], "named": 0.95},
+             {"term": "mirelo sfx", "kinds": ["x"], "named": 0.9},
+             {"term": "mirelo sfx 2.0", "kinds": ["x"], "named": 0.9}]
+
+    assert usecases.names_to_read(today, []) == ["deepseek v4.1 flash 1017", "mirelo sfx 2.0"]
+
+
 def test_a_failed_post_search_costs_one_name_its_posts_not_the_step(monkeypatch):
     def call(calls):
         if "photocraft" in calls[0]["arguments"]["query"]:
