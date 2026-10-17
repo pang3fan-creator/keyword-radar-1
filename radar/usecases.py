@@ -261,6 +261,25 @@ def other_names(name: str, viewed: list[dict], reading: list[str] = ()) -> list[
     return out[:COSEARCH_KEPT]
 
 
+def volume_status(volume: int, min_volume: int) -> str:
+    """No volume is not no demand: a new word usually has none yet (docs/05 §4.3 B), so the
+    threshold labels a row instead of dropping it."""
+    if not volume:
+        return "unknown"
+    return "below_threshold" if volume < min_volume else "known"
+
+
+def keep(proposed: dict[str, dict], vol: dict[str, dict], c: dict) -> list[dict]:
+    """Every relevant phrase, sized or not. `min_volume` is a label, never a gate."""
+    rows = []
+    for phrase, r in proposed.items():
+        v = vol.get(phrase) or {}
+        volume = int(v.get("volume") or 0)
+        rows.append({**r, "volume": volume, "month": v.get("month", ""),
+                     "volume_status": volume_status(volume, c["min_volume"])})
+    return sorted(rows, key=lambda r: (-r["volume"], r["phrase"]))
+
+
 def relevant(cands: list[dict]) -> list[dict]:
     """Candidates that pass the screen: not another thing's name, and related enough."""
     return [c for c in cands if not c.get("is_name") and c.get("relevance", 1.0) >= RELEVANT_MIN]
@@ -465,6 +484,7 @@ def measure(rows: list[dict], series: dict[str, dict], min_daily: int, today: da
         own = own_per_day(solo, r.get("volume", 0), r.get("month", ""), today)
         if own is not None:
             z["per_day"] = own      # a term's own volume is a better anchor than the benchmark
+        r["size_status"] = "known" if z.get("per_day") is not None else "unknown"
         r.update({**s, **z, "decision": decide(s, z.get("per_day"), min_daily)})
     return daily
 
@@ -511,13 +531,17 @@ def run(cfg: dict, state: Path, names: list[str], repos: dict[str, str], today: 
                 row["source"] = "searched"
     bench = c["benchmark"].lower()
     vol, c2 = volumes(sorted(proposed), c["location_code"])
-    generic = sorted((dict(r, **vol[p]) for p, r in proposed.items() if vol.get(p, {}).get("volume", 0) >= c["min_volume"]),
-                     key=lambda r: -r["volume"])[:c["trends_max"]]
-    rows = [{"term": n, "phrase": n, "kind": "name", "names": [], "brand": True, "evidence": "", **vol.get(n, {})} for n in todo] + generic
+    generic = keep(proposed, vol, c)
+    measured = generic[:c["trends_max"]]          # the cap saves paid Trends lookups, not rows
+    rows = [{"term": n, "phrase": n, "kind": "name", "names": [], "brand": True, "evidence": "",
+             "volume_status": volume_status(int((vol.get(n) or {}).get("volume") or 0), c["min_volume"]),
+             **vol.get(n, {})} for n in todo] + measured
     series, c3 = fetch_series([r["phrase"] for r in rows], bench, today)
     local, c4, local_errors = country_series(rows, c) if goanyapi.key() and c.get("country_trends", True) else ({}, 0, [])
     daily = measure(rows, series, c["min_daily"], today, local)
     c5, comp_errors = competition.assess(rows, cfg, state) if cfg.get("competition", {}).get("max_rows") else (0, [])
+    for r in generic[c["trends_max"]:]:           # kept for the table, not worth a paid lookup
+        rows.append({**r, "no_data": True, "size_status": "unknown", "decision": "watch"})
     order = {"prioritize": 0, "watch": 1, "skip": 2}
     rows.sort(key=lambda r: (order[r["decision"]], -(r.get("per_day") or 0), -(r.get("volume") or 0)))
     if not on_request:
@@ -526,7 +550,9 @@ def run(cfg: dict, state: Path, names: list[str], repos: dict[str, str], today: 
             s["runs"] += 1
         cutoff = (today - timedelta(days=STATE_DAYS)).isoformat()
         snap.save(path, {n: s for n, s in seen.items() if s["first"] >= cutoff})
-    return {"names": todo, "rows": rows, "proposed": asked, "relevant": len(proposed), "kept": len(generic), "benchmark": bench,
+    counts = {k: sum(1 for r in generic if r["volume_status"] == k) for k in ("known", "below_threshold", "unknown")}
+    return {"names": todo, "rows": rows, "proposed": asked, "relevant": len(proposed), "kept": len(generic),
+            "counts": counts, "benchmark": bench,
             "bench_daily": round(daily) if daily else None, "volume_month": next((r["month"] for r in generic if r.get("month")), ""),
             "no_evidence": [n for n in todo if not ev[n]["posts"] and not ev[n]["readme"]],
             "posts_error": "; ".join(f"{n}: {e['error']}" for n, e in ev.items() if e.get("error")),

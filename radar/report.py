@@ -342,10 +342,12 @@ def keyword_table(cfg: dict, uc: dict) -> list[str]:
     c = cfg["usecases"]
     if usecases.degraded(uc):
         lines += [t("uc_degraded"), ""]
-    lines += [t("uc_intro", names=", ".join(uc["names"]), proposed=uc["proposed"], relevant=uc["relevant"], kept=uc["kept"], min=c["min_volume"],
-                month=uc["volume_month"] or "?"),
+    counts = uc.get("counts") or {}
+    lines += [t("uc_intro", names=", ".join(uc["names"]), proposed=uc["proposed"], relevant=uc["relevant"], kept=uc["kept"],
+                known=counts.get("known", 0), below=counts.get("below_threshold", 0), unknown=counts.get("unknown", 0),
+                min=c["min_volume"], month=uc["volume_month"] or "?"),
               t("uc_bench", bench=uc["benchmark"], bench_daily=uc["bench_daily"]) if uc.get("bench_daily") else t("uc_bench_none", bench=uc["benchmark"]), "",
-              t("uc_cols", bench=uc["benchmark"]), "|---|---|---|---|---|---|---|---|---|---|---|---|"]
+              t("uc_cols", bench=uc["benchmark"]), "|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
     for r in uc["rows"]:
         generic = r["kind"] == "generic"
         none = r.get("no_data")
@@ -355,7 +357,8 @@ def keyword_table(cfg: dict, uc: dict) -> list[str]:
             f"{' ⚠' if generic and r['brand'] else ''} | "
             f"{t('uc_type_generic' if generic else 'uc_type_name')} | "
             f"{', '.join(r['names']) or t('dash')} | {t('dash') if none else t('uc_yes' if r['new'] else 'uc_no')} | "
-            f"{r['per_day'] if 'per_day' in r else t('dash')} | {r.get('started') or t('dash')} | {peak} | "
+            f"{r['per_day'] if 'per_day' in r else t('dash')} | {t('uc_size_' + r.get('size_status', 'unknown'))} | "
+            f"{r.get('started') or t('dash')} | {peak} | "
             f"{t('dash') if none else r['peak_day']} | {'×' + str(r['momentum']) if r.get('momentum') is not None else t('dash')} | "
             f"{t('uc_now_none') if none else t('uc_now_' + r['now'])}{' (' + uc['geo'] + ')' if r.get('trend_geo') else ''} | "
             f"{_page_one(r.get('competition'))} | {t('uc_' + r['decision'])}{' ↓' if r.get('demoted') else ''} |")
@@ -392,7 +395,7 @@ def usecase_leads(uc: dict) -> list[dict]:
     """The generic terms as leads, for the 14-day review."""
     return [{"term": r["phrase"], "kinds": ["usecase"], "variants": [r["phrase"]],
              "signals": [t("note_usecase", names=", ".join(r["names"]), volume=r.get("volume", 0))]}
-            for r in uc.get("rows", []) if r["kind"] == "generic"] + \
+            for r in uc.get("rows", []) if r["kind"] == "generic" and r.get("volume_status") != "unknown"] + \
         [{"term": x["term"], "kinds": ["cosearch"], "variants": [x["term"]], "signals": [t("note_cosearch", name=x["with"])]}
          for x in uc.get("cosearch", [])]
 

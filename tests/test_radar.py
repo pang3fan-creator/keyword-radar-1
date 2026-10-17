@@ -554,7 +554,8 @@ def test_usecases_run_builds_one_table_and_reads_a_name_twice(cfg, tmp_path, mon
     _fake_usecase_network(monkeypatch)
     uc = usecases.run(cfg, tmp_path, ["synthid detector"], {}, TODAY)
     rows = {r["phrase"]: r for r in uc["rows"]}
-    assert uc["proposed"] == 3 and uc["relevant"] == 3 and uc["kept"] == 2 and "nobody searches this" not in rows
+    assert uc["proposed"] == 3 and uc["relevant"] == 3 and uc["kept"] == 3
+    assert rows["nobody searches this"]["volume_status"] == "unknown"      # kept, and told why
     assert rows["synthid detector"]["kind"] == "name" and rows["synthid detector"]["decision"] == "prioritize"
     assert rows["ai image detector"]["per_day"] == 2000 and rows["ai image detector"]["decision"] == "watch"
     assert rows["photoshop alternative"]["brand"] and rows["photoshop alternative"]["decision"] == "skip"
