@@ -565,9 +565,11 @@ def test_usecases_run_builds_one_table_and_reads_a_name_twice(cfg, tmp_path, mon
 
 def test_keyword_table_marks_brands_and_generic_terms_become_leads(cfg, tmp_path, monkeypatch):
     _fake_usecase_network(monkeypatch)
-    uc = usecases.run(cfg, tmp_path, ["synthid detector"], {}, TODAY)
+    uc = usecases.run(cfg, tmp_path, ["synthid detector"], {}, TODAY,
+                      signals={"synthid detector": {"kinds": ["x", "hf"], "named": 0.9}})
     text = "\n".join(report.keyword_table(cfg, uc))
     assert "| **synthid detector** | name |" in text and "**prioritize**" in text
+    assert "2 signals · 0.90" in text                                       # the rule is on the page
     assert "| **photoshop alternative** ⚠ | generic | synthid detector |" in text and "someone's brand" in text
     assert "“check if any image is AI generated”" in text
     leads = report.usecase_leads(uc)

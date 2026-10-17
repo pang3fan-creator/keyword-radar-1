@@ -52,7 +52,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import date, timedelta
 from pathlib import Path
 
-from . import UA, aisa, benchmarks, competition, entity, goanyapi, review, snap
+from . import UA, aisa, benchmarks, competition, entity, goanyapi, leading, review, snap
 
 POSTS_KEPT = 12
 POST_CHARS = 400
@@ -410,11 +410,12 @@ def ratios(pairs: dict, today: date) -> dict[str, float]:
     return out
 
 
-def decide(s: dict, per_day: int | None, min_daily: int) -> str:
+def decide(s: dict, per_day: int | None, min_daily: int, strong: bool | None = None) -> str:
     """prioritize: rose, still up, and big enough. watch: rose but small; too early to
     read; or a term that did not move but has steady demand of that size (a need the
     new thing serves, not one it created). skip: fading, or flat and small."""
-    big = (per_day or 0) >= min_daily
+    # A known size wins; without one the leading rule decides, never a made-up number.
+    big = per_day >= min_daily if per_day is not None else bool(strong)
     if s.get("no_data"):
         return "watch"
     if s["now"] == "fading":
@@ -484,6 +485,8 @@ def measure(rows: list[dict], solo: dict[str, list], pairs: dict[str, dict], min
             s = shape(solo.get(r["phrase"]) or [], today)
         z: dict = {}
         if r.get("kind") == "name":
+            r["leading"] = leading.label(r.get("kinds"), r.get("named"))
+            r["leading_strong"] = leading.strong(r.get("kinds"), r.get("named"))
             per_day = benchmarks.size(ratios(pairs.get(r["phrase"]) or {}, today), dailies)
             if per_day is not None:
                 z["per_day"] = per_day
@@ -493,11 +496,12 @@ def measure(rows: list[dict], solo: dict[str, list], pairs: dict[str, dict], min
             if own is not None:
                 z["per_day"] = own
             r["size_status"] = "known" if own is not None else "unknown"
-        r.update({**s, **z, "decision": decide(s, z.get("per_day"), min_daily)})
+        r.update({**s, **z, "decision": decide(s, z.get("per_day"), min_daily, r.get("leading_strong"))})
 
 
 def run(cfg: dict, state: Path, names: list[str], repos: dict[str, str], today: date | None = None,
-        on_request: bool = False, texts: dict[str, tuple[str, str]] | None = None) -> dict:
+        on_request: bool = False, texts: dict[str, tuple[str, str]] | None = None,
+        signals: dict[str, dict] | None = None) -> dict:
     """names: today's named leads, most important first. repos: {name: "owner/repo"} where known.
     `on_request` is for names a person asked about (the `keywords` command, the MCP tool): all of
     them are read now, up to ASKED_MAX, and the read-twice record is left alone."""
@@ -545,6 +549,8 @@ def run(cfg: dict, state: Path, names: list[str], repos: dict[str, str], today: 
     generic = keep(proposed, vol, c)
     measured = generic[:c["trends_max"]]          # the cap saves paid Trends lookups, not rows
     rows = [{"term": n, "phrase": n, "kind": "name", "names": [], "brand": True, "evidence": "",
+             "kinds": (signals or {}).get(n, {}).get("kinds"),
+             "named": (signals or {}).get(n, {}).get("named"),
              "volume_status": volume_status(int((vol.get(n) or {}).get("volume") or 0), c["min_volume"]),
              **vol.get(n, {})} for n in todo] + measured
     solo, c3 = solo_series([r["phrase"] for r in rows], today)

@@ -105,7 +105,9 @@ def cmd_daily(args, cfg: dict, state: Path) -> int:
     names = usecases.names_to_read(report.to_record(cfg, lead), extra["recent_sources"].get("rows", []))
     repos = {r["term"]: r["repo"] for r in lead if r.get("repo")}
     about = {r["term"]: r["about"] for r in lead if r.get("about")}      # a paying product's own description
-    extra["usecases"] = run(lambda: usecases.run(cfg, state, list(dict.fromkeys(names)), repos, texts=about),
+    signals = {r["term"]: {"kinds": r["kinds"], "named": r.get("named")} for r in report.to_record(cfg, lead)}
+    extra["usecases"] = run(lambda: usecases.run(cfg, state, list(dict.fromkeys(names)), repos, texts=about,
+                                                 signals=signals),
                             "usecases" in args.skip or not cfg["usecases"]["per_day"])
     run(lambda: store.record(conn, report.usecase_leads(extra["usecases"])))
     rev = run(lambda: review.review(cfg, conn), "review" in args.skip)
