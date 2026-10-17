@@ -3,14 +3,14 @@ from __future__ import annotations
 
 import re
 
-from . import opportunity, config, judge, usecases
+from . import opportunity, config, judge, select, usecases
 from .i18n import t
 
 SHOWN = 20
 OTHER_TERMS = 15
 POSTS_SHOWN = 3   # posts quoted in full per term
 # signal key -> label key, in the order of how early the signal comes
-KINDS = ["x", "hf", "breakout", "sitemap", "newsite", "revenue", "ask", "usecase", "cosearch", "watch"]
+KINDS = select.EARLY
 
 
 def leads(cfg: dict, blocks: dict[str, dict]) -> tuple[list[dict], dict]:
@@ -34,10 +34,9 @@ def leads(cfg: dict, blocks: dict[str, dict]) -> tuple[list[dict], dict]:
         r["known"] = config.known(cfg, r["term"])
         opportunity.tag(r)
     status = judge.score(rows, cfg["judge"]["model"]) if rows else {"judged": 0}
-    cut = cfg["judge"]["min_score"]
-    # Earliest signal first among equals: a name the labs said today beats a sitemap echo.
-    rows.sort(key=lambda r: (-(r.get("named", 0) >= cut), -len(r["kinds"]),
-                             min(KINDS.index(k) for k in r["kinds"]), opportunity.RANK[r["format"]], -r.get("named", 0)))
+    # Deal the visible slots across signals: a name only Hugging Face found still gets read
+    # when X is loud (docs/05 §4.2b). The judge's score orders the rows inside a signal.
+    rows = select.order(rows, SHOWN)
     return rows, status
 
 
