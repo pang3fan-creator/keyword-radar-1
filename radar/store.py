@@ -123,13 +123,21 @@ def _note(conn: sqlite3.Connection, term_id: int) -> str | None:
 
 def signals_for(conn: sqlite3.Connection, term: str) -> dict:
     """Which signals found this term and how the judge scored its name: what the leading rule
-    needs when a manual `keywords` run has no lead rows of its own."""
-    row = conn.execute("SELECT id, name_score FROM terms WHERE canonical = ?", (term,)).fetchone()
+    needs when a manual `keywords` run has no lead rows of its own. A term typed as one of
+    its stored spellings finds the same signals: `spark open` is `muse spark open`. The
+    alias has to be one the term actually carries, not a substring of a longer name."""
+    name = " ".join(term.lower().split())
+    if not name:
+        return {"kinds": [], "named": None}
+    rows = conn.execute("SELECT id, canonical, name_score, aliases FROM terms"
+                        " WHERE canonical = ? OR aliases LIKE ?", (name, f'%"{name}"%')).fetchall()
+    row = next((r for r in rows if r[1] == name), None) or \
+        next((r for r in rows if name in json.loads(r[3])), None)
     if row is None:
         return {"kinds": [], "named": None}
     kinds = [r[0] for r in conn.execute("SELECT source FROM term_signals WHERE term_id = ? ORDER BY source",
                                         (row[0],))]
-    return {"kinds": kinds, "named": row[1]}
+    return {"kinds": kinds, "named": row[2]}
 
 
 def _term_id(conn: sqlite3.Connection, canonical: str) -> int | None:

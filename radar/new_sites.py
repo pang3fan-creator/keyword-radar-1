@@ -12,6 +12,12 @@ One query per entry of config.json's new_sites.queries (a name and a SQL LIKE pa
 on the domain, e.g. "%ai%"), about $0.13 each, so the radar runs this once a week
 (new_sites.weekday, 0 = Monday). Each site is reported once; the words of its name go
 to the name judge with the other leads ("hailuo").
+
+The filter was recorded as broken upstream; it is not. scripts/new_sites_probe.py is the
+one paid call that checks it (2026-10-17: status 20000, 9 sites, $0.131). What was wrong
+is the silence: aisa.call() drops a failed tool call from the result, so a rejected query
+looked like "no new sites". The block counts what answered and names the queries that did
+not, and the report prints them.
 """
 from __future__ import annotations
 
@@ -78,4 +84,9 @@ def new_sites(cfg: dict, state: Path, today: date | None = None) -> dict:
     terms = [{"term": w, "recent": 1, "examples": [f"{r['domain']} · {r['keywords']} keywords"],
               "note": t("note_site", domain=r["domain"], created=r["created"], etv=r["etv"], keywords=r["keywords"])}
              for r in rows if r["new"] for w in name_terms(r["domain"])]
-    return {"queries": len(c["queries"]), "answered": len(data), "cost_micros": cost, "sites": rows, "terms": terms}
+    # A failed query is dropped from `data` by aisa.call(): say which one, so an empty
+    # week is not read as "no new sites".
+    failed = [name for name in c["queries"] if name not in data]
+    return {"queries": len(c["queries"]), "answered": len(data), "read": len(rows),
+            "found": sum(1 for r in rows if r["new"]), "failed": failed,
+            "cost_micros": cost, "sites": rows, "terms": terms}
