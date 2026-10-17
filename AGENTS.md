@@ -28,6 +28,7 @@ radar/                 runtime code (upstream layout; keep it recognizable)
   sitemaps.py          new URLs in configured sitemaps
   hn.py                Show HN stories: one lead per name, each story once (free)
   official.py          launch posts on the labs' own feeds, RSS and Atom (free)
+  ph.py                Product Hunt launches ranked by votes (free, needs PH_API_KEY)
   terms.py             name/term extraction
   judge.py             LLM name judge
   entity.py            one term per thing: normalize, merge, canonical
@@ -166,7 +167,8 @@ M3 completed on 2026-10-17 (`669378e`, `f73bef8`):
 
 - `radar/hn.py`: Show HN stories from the last `hn.lookback_hours` (30) with at least `hn.min_points` (30), at most `hn.top` (25) names. The first capitalised run of the title, before the first dash, colon or bracket, is the name; a lone gerund ("Show HN: Building an LLM from Scratch") is not. Each objectID is reported once (`state/hn_seen.json.gz`), and a story that crosses the floor later is still new. Free, no key.
 - `radar/official.py`: six launch feeds (OpenAI, Google AI, DeepMind, Hugging Face, Mistral, Microsoft Research). Only posts from the last `official.lookback_days` (7) are read: OpenAI's feed carries 1,299 items back to 2015. A title has to be a name: its first up-to-three words before the first colon, dash, pipe, bracket or comma, with launch words and gerunds dropped, kept when the name carries a digit or the title opens with a launch word. All 12 OpenAI titles in the 2026-10-17 sample were customer stories, essays or research posts and were dropped. One dead feed is a line, not a lost run; a gzipped body is unzipped; Microsoft's feed answers 403 without an `Accept` header.
-- Anthropic and Meta AI publish no usable feed (seven Anthropic paths answered 404 on 2026-10-17), so the official source is six feeds, not eight. Product Hunt has no adapter: no `PH_API_KEY` in `.env`, and an unverified adapter is not written.
+- Anthropic and Meta AI publish no usable feed (seven Anthropic paths answered 404 on 2026-10-17), so the official source is six feeds, not eight.
+- `radar/ph.py`: Product Hunt launches in the AI topic, last `ph.lookback_hours` (26), ordered by votes, `ph.min_votes` (50) to count. `PH_API_KEY` is the dashboard's developer token (public read; no client secret needed). A product is reported once (`state/ph_seen.json.gz`); a launch below the floor is not marked seen, so one that climbs later is still new. `Notion: Context for your agents` is read as `notion context`: the brand alone is the old name.
 - `report._source_line()` gives every block without a bespoke line "{n} read, {m} new", the failed feed or query, or the error; a kind with no label still shows, and a skipped sitemap now says so. This is the answer to the M0 `toolify: no URLs read` class of bug: `aisa.call()` drops a failed call from the result, so a source has to count what came back.
 - `select.EARLY` starts with `official`, puts `hn` after `breakout`, and keeps the sitemap echo last. `usecases.READ_KINDS` includes both: before this, their names were stored and reviewed but never read for generic terms.
 - `store.signals_for()` finds a term by any spelling in its `aliases` (`spark open` -> `muse spark open`); the match is exact membership, so `beam` does not find `beam 1.0`.
@@ -175,12 +177,22 @@ M3 completed on 2026-10-17 (`669378e`, `f73bef8`):
 - A 40-title sample (20 Show HN, 20 recent official posts) gave 19 names (14 and 5), checked by eye against their titles; the one false positive the sample caught ("building" from "Show HN: Building an LLM from Scratch in TypeScript") is now rejected by the gerund rule. Known misses: a lowercase-start name (`Show HN: rStation`), and names not at the start of a title (`Google Antigravity`, `LFM2.5-24B-A2B`). 14-day hit rates are M5's.
 - Cost: $0.131 for the probe; the dry run was free.
 
+M3 review round, same day (PI review) (`dcde0bb`):
+
+- Blocker: a feed that answered with a web page (a challenge page, a 404 body) threw in `items()` outside the try, and the whole official block became one error -- the docstring claimed the opposite. Parsing is inside the try now; a test feeds a good RSS and an HTML page and asserts `found == 1`, `failed == ["b"]`.
+- A maker alone read as a new name: "Show HN: OpenAI released GPT-6" -> `openai`, "OpenAI: our new model" -> `openai`. `entity.MAKERS` rejects a name that is a known maker with no digit or version in it, in HN, official and PH; `openai o3` keeps its place.
+- A full Algolia page (100) or Product Hunt page (50) dropped its tail in silence; both blocks carry `capped`, and the status line says "hit the page cap".
+- `signals_for()` escapes `%` and `_` in the alias pattern (`ESCAPE '\'`). The membership check already kept the answer right; this stops the query from over-fetching.
+- `tests/fixtures/titles_40.json` pins the 40-title sample: 19 names and 2 known misses (a lowercase first letter, a name that is not at the start of the title). Fixing a miss means updating the fixture.
+- The `st_ran` branch has a test now.
+- Free run with all three: 5 HN + 28 official + 20 PH posts read, 20 names in the table, $0.
+
 Still open after M3:
 
-- Product Hunt: blocked on `PH_API_KEY` / `PH_API_SECRET`; no code until the key exists.
+- Product Hunt's `PH_API_KEY` is a developer token; if it is revoked the status line shows the HTTP error, not a quiet zero.
 - The five-name reading budget is unchanged; HN and official names compete for the same slots, so a busy launch week can crowd out X.
-- `sources` (the frequent job) still runs x/hf only; HN and official run in `daily`.
-- Only the six default feeds are verified; adding one is a config edit, not a code change.
+- `sources` (the frequent job) still runs x/hf only; HN, official and PH run in `daily`.
+- Only the six default feeds are verified; adding one is a config edit, not a code change. The 40-title fixture is one day's sample: a new feed or a fixed miss needs the fixture updated.
 - The keyword table's `新词?` column still reads the Trends baseline, not `first_seen` (from M2).
 - The benchmark cache is still refreshed by hand; the SQLite `keywords` table still has no writer.
 
