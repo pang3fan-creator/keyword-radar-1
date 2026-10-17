@@ -28,10 +28,12 @@ radar/                 runtime code (upstream layout; keep it recognizable)
   sitemaps.py          new URLs in configured sitemaps
   terms.py             name/term extraction
   judge.py             LLM name judge
+  entity.py            one term per thing: normalize, merge, canonical
+  select.py            signal order and lane; the quota that picks the visible names
   usecases.py          evidence -> generic terms -> keyword table
   competition.py       SERP / KD / DR page-one check
   review.py            14-day Trends review
-  store.py             SQLite memory; SCHEMA (leads) and SCHEMA_NEXT (the M1 tables)
+  store.py             SQLite memory: terms / term_signals / reviews (leads is frozen)
   migrate.py           one-off: leads -> terms / term_signals / reviews / runs
   report.py            Markdown/JSON reports
   aisa.py, goanyapi.py paid data sources
@@ -113,13 +115,21 @@ M0 completed on 2026-10-17:
 - Cost: **$0.341**; 75 leads in `state/radar.db`; review pending (14 days).
 - Known gaps: `new_sites` (DataForSEO filter), `toolify` sitemap, `gpts` benchmark uncalibrated, X-first selection bias, alias duplicates, some URL-fragment noise.
 
-M1.0 completed on 2026-10-17: `scripts/migrate_leads.py --dry-run` reports, the real run copies. All 75 leads arrived as 75 `terms`, 76 `term_signals` and 2 `runs` (2026-10-16 and 2026-10-17, M0 cost 341000 micro-USD). `reviews` is empty because every review is still pending. The old table is unchanged, and `store.connect()` does not create the new tables yet, so `daily` keeps writing only `leads` until the readers move over. The pre-migration DB is at `state/backup-2026-10-17-pre-migration/`.
+M1 completed on 2026-10-17 (`516c6a2..be2d9f7`):
 
-Next milestone (M1):
+- `radar/entity.py`: one term per thing. 100-pair calibration set (50 merge, 50 do not, 10 pairs taken from the real lead table); an extra token must be a maker, a format, a version or a size, never a variant.
+- `radar/select.py`: the visible slots alternate across signals. On the M0 candidates the top 20 went from 20 X to x 6 / hf 6 / breakout 3 / sitemap 5, and the five names read became `deepseek v4.1 flash 1017`, `figcraft`, `gpt 6 astra pro`, `beam 1.0`, `git ai`.
+- `known_terms` match whole tokens; a lead is new when `first_seen` is today.
+- `store.py` reads and writes `terms` / `term_signals` / `reviews`, and `connect()` creates `SCHEMA_NEXT`. `leads` keeps the migrated history and is no longer written.
+- Migration: 75 leads became 75 terms, 76 signals and 2 runs; the pre-migration DB is at `state/backup-2026-10-17-pre-migration/`.
 
-1. `radar/entity.py`: tail cleanup + conservative alias clustering (tests first).
-2. Signal-balanced keyword-table selection (tests first): name slots by fast lane and signal quota, plus a fixture where a `usecase`-only phrase must not displace an HF 0.90 name. Replay M0 from `term_signals` to prove the GitHub leads surface.
-3. `known_terms` word-boundary matching; `new` via `first_seen`.
+Still open after M1:
+
+- No real `daily` has run since the cutover, so the new write path is covered by tests only; one paid run (about $0.34) is the next step.
+- `reviews` holds no real data before 2026-10-31, when the first 14-day window closes.
+- Reading is capped at five names a day and does not rotate: a name ranked 6th or below is only read again when its signal fires again (found in the M0 replay).
+
+Next milestone (M2): leading indicators, no hard `min_volume` gate, the benchmark basket and the measurement-integrity golden set.
 
 ## Git and collaboration
 
