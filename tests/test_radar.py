@@ -277,9 +277,11 @@ def test_store_upserts_and_merges(tmp_path):
     conn = store.connect(tmp_path)
     store.record(conn, [_lead("strata", ["x"], named=0.9, variants=["strata"])], date(2026, 9, 25))
     store.record(conn, [_lead("strata", ["breakout"], variants=["strata", "niko strata"])], date(2026, 9, 26))
-    row = conn.execute("SELECT first_seen, last_seen, signals, named, variants FROM leads").fetchone()
-    assert row[:2] == ("2026-09-25", "2026-09-26") and json.loads(row[2]) == ["breakout", "x"]
-    assert row[3] == 0.9 and json.loads(row[4]) == ["strata", "niko strata"]
+    first, last, named, aliases = conn.execute(
+        "SELECT first_seen, last_seen, name_score, aliases FROM terms").fetchone()
+    assert (first, last) == ("2026-09-25", "2026-09-26") and named == 0.9
+    assert json.loads(aliases) == ["niko strata", "strata"]
+    assert [r[0] for r in conn.execute("SELECT source FROM term_signals ORDER BY source")] == ["breakout", "x"]
 
 
 def test_store_due_verdict_and_summary(tmp_path):
@@ -357,7 +359,8 @@ def test_review_stores_the_verdict(cfg, tmp_path, monkeypatch):
     monkeypatch.setattr(review.aisa, "call_all", lambda calls: ({c["call_id"]: answer for c in calls}, 1200))
     out = review.review(cfg, conn, date(2026, 10, 10))
     assert out["checked"] == [{"term": "niko strata", "first_seen": "2026-09-25", "verdict": "hit", "lead_days": 3}]
-    assert conn.execute("SELECT verdict, lead_days FROM leads").fetchone() == ("hit", 3)
+    metrics, lead = conn.execute("SELECT metrics, lead_days FROM reviews").fetchone()
+    assert (json.loads(metrics)["verdict"], lead) == ("hit", 3)
 
 
 # --- the two commands ---------------------------------------------------------------------------
@@ -386,7 +389,7 @@ def test_sources_run_reports_and_keeps_a_new_name(tmp_path, monkeypatch):
     cli.main(["sources", "--config", str(_write_config(tmp_path)), "--state", str(state), "--out", str(out)])
     text = out.read_text()
     assert "**qwen3.9**" in text and "$0.072" in text and "[post](https://x.com/p/1)" in text
-    assert store.connect(state).execute("SELECT term FROM leads").fetchall() == [("qwen3.9",)]
+    assert store.connect(state).execute("SELECT canonical FROM terms").fetchall() == [("qwen3.9",)]
 
 
 def test_daily_run_writes_a_report_when_every_signal_is_down(tmp_path, monkeypatch):

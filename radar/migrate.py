@@ -10,23 +10,9 @@ import json
 from datetime import date
 from pathlib import Path
 
-from . import store
+from . import select, store
 
-# Which lane a signal belongs to (docs/05 §1): an event source names a new thing today;
-# a use-case or co-search phrase is a combo word that shows up over weeks. "ask" is the
-# open question: docs/05 §3.1 puts the help signal on a weekly P2, so it may belong on the
-# slow side; the migrated rows have no ask-only lead, so nothing depends on it yet.
-FAST_KINDS = {"x", "hf", "breakout", "sitemap", "newsite", "revenue", "ask", "watch"}
-SLOW_KINDS = {"usecase", "cosearch"}
 REVIEW_DAYS = 14
-
-
-def _window(kinds: list[str]) -> str | None:
-    if set(kinds) & FAST_KINDS:
-        return "fast"
-    if set(kinds) & SLOW_KINDS:
-        return "slow"
-    return None
 
 
 def _search_rise(verdict: str | None) -> int | None:
@@ -51,7 +37,7 @@ def migrate(conn, today: date | None = None, dry_run: bool = False) -> dict:
             "INSERT INTO terms (canonical, aliases, first_seen, last_seen, name_score, window,"
             " status, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
             (term, json.dumps(json.loads(variants) or [], ensure_ascii=False), first, last, named,
-             _window(kinds), "new", first, last))
+             select.lane(kinds), "new", first, last))
         stats["terms"] += 1
         for kind in sorted(set(kinds)):
             conn.execute("INSERT INTO term_signals (term_id, source, first_seen, evidence)"

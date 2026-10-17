@@ -17,6 +17,16 @@ EARLY = ["x", "hf", "breakout", "sitemap", "newsite", "revenue", "ask", "usecase
 SLOW = {"usecase", "cosearch"}      # combo words, not names: they earn keyword rows, not a name slot
 
 
+def lane(kinds) -> str | None:
+    """Which lane found it: an event source names a thing today, a combo phrase shows up over
+    weeks. `ask` sits on the fast side for now; docs/05 §3.1 puts the help signal on a weekly
+    P2, so it may move to the slow side once the quota has seen real data."""
+    kinds = set(kinds)
+    if not kinds:
+        return None
+    return "slow" if kinds <= SLOW else "fast"
+
+
 def _rank(row: dict) -> tuple:
     return (-(row.get("named") or 0), str(row.get("first_seen") or ""), row["term"])
 
