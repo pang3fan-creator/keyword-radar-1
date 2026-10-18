@@ -4,7 +4,7 @@ This file is for agents working on `keyword-radar`. Read it before changing beha
 
 ## What this project is
 
-`keyword-radar` is a fork of [new-term-radar](https://github.com/zhuyansen/new-term-radar) (MIT). It finds the names of new AI models, products, tools and repositories before they show up in keyword tools, then turns each name into a keyword priority table: the generic search terms behind it, sized and checked for room on page one.
+`keyword-radar` is a new project built on [new-term-radar](https://github.com/zhuyansen/new-term-radar) (MIT), not a GitHub fork of it. It finds the names of new AI models, products, tools and repositories before they show up in keyword tools, then turns each name into a keyword priority table: the generic search terms behind it, sized and checked for room on page one.
 
 The product is the **discovery and decision layer**, not a site builder.
 
@@ -48,7 +48,6 @@ radar/                 runtime code (upstream layout; keep it recognizable)
 tests/                 pytest suite; no network, no paid calls
 docs/                  docs index; Roadmap/ (00-06: constraints, research, methodology, scope); 里程碑.md
 docs/make_diagram/     the flow diagram script and GIFs (upstream)
-skills/                three Agent Skills from upstream
 scripts/               one-off utilities (e.g. migration)
 config.json            local config (gitignored)
 config.example.json    tracked template
@@ -133,6 +132,7 @@ Snapshot (2026-10-18, re-read from `state/radar.db`):
 - `runs` #5 `daily`: $0.395, 20 leads stored, no errors; #6 `precision`: $0.090, 10 sampled (7 new / 3 searched / 0 unknown).
 - First paid rows: fast 7d/14d on **2026-10-29**; slow 14d/30d on **2026-11-14**.
 - The daily run is manual: the owner says when to run it. There is no scheduler in the runtime.
+- Agent interface: **MCP only**. The three Agent Skills and the Claude Code plugin were removed on 2026-10-18; `radar/mcp_server.py` is the one interface.
 
 Still open after M5 (the full list is in `docs/里程碑.md`):
 
@@ -163,6 +163,6 @@ Three review rounds found the same class of miss: the handover said "done" and t
 
 ## License and provenance
 
-- This project is MIT, forked from `zhuyansen/new-term-radar`.
+- This project is MIT, built on `zhuyansen/new-term-radar` (MIT); it is a new project, not a GitHub fork.
 - `TrendRadar` (GPL-3.0) is a reference only. Do not copy its code; borrow design ideas at most.
 - `Twitter-Trend-Radar` (MIT) is reference material; the `gitignore/` folder is not part of the product.

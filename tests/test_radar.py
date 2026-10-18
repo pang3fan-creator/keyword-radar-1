@@ -845,18 +845,6 @@ def test_mcp_tools_answer_and_never_print(cfg, tmp_path, monkeypatch, capsys):
     assert capsys.readouterr().out == ""        # stdout is the protocol channel
 
 
-def test_skills_have_a_name_and_a_description():
-    root = Path(__file__).resolve().parents[1] / "skills"
-    for name in ("new-term-radar", "ai-listening", "seo-new-keywords-research"):
-        text = (root / name / "SKILL.md").read_text()
-        head = re.match(r"---\nname: (\S+)\ndescription: (.+)\n---\n", text)
-        assert head and head.group(1) == name and 100 < len(head.group(2)) < 1024
-        assert "python -m radar" in text and "AISA_API_KEY" in text
-        # Claude Code replaces $0, $1 ... in a skill's text with the user's arguments: "$0.05" came out
-        # as "<what the user typed>.05" on the first real run. Amounts are written "0.05 USD".
-        assert not re.search(r"\$\d", text)
-
-
 def test_the_aisa_key_comes_from_the_environment_or_the_cli_login(tmp_path, monkeypatch):
     from radar import aisa
     monkeypatch.setattr(aisa.Path, "home", lambda: tmp_path)
@@ -872,14 +860,13 @@ def test_the_aisa_key_comes_from_the_environment_or_the_cli_login(tmp_path, monk
 
 
 def test_every_manifest_carries_the_same_version():
-    # A release is one number in five places; the registry rejects a server.json whose
+    # A release is one number in three places; the registry rejects a server.json whose
     # version PyPI does not have.
     import radar
     root = Path(__file__).resolve().parents[1]
     server = json.loads((root / "server.json").read_text())
-    plugin = json.loads((root / ".claude-plugin" / "plugin.json").read_text())
     pyproject = re.search(r'^version = "([^"]+)"', (root / "pyproject.toml").read_text(), re.M).group(1)
-    assert {pyproject, server["version"], server["packages"][0]["version"], plugin["version"]} == {radar.__version__}
+    assert {pyproject, server["version"], server["packages"][0]["version"]} == {radar.__version__}
     assert len(server["description"]) <= 100                                  # the registry's limit
     assert f"mcp-name: {server['name']} -->" in (root / "README.md").read_text()   # how the registry checks who owns the PyPI package
 

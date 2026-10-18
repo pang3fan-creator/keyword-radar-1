@@ -1,6 +1,6 @@
 # keyword-radar（新词雷达）
 
-> 本项目 fork 自 [new-term-radar](https://github.com/zhuyansen/new-term-radar)（MIT），聚焦海外 AI 新词的**发现**：不做建站、不做推送、不做页面生成。仓库名是 keyword-radar；Python 包、MCP 清单和 PyPI 身份仍沿用上游的 new-term-radar。
+> 本项目不是 [new-term-radar](https://github.com/zhuyansen/new-term-radar) 的 GitHub fork，而是基于它（MIT）重建的独立项目，聚焦海外 AI 新词的**发现**：不做建站、不做推送、不做页面生成。仓库名是 keyword-radar；Python 包、MCP 清单和 PyPI 身份仍沿用上游的 new-term-radar。
 
 每天一份报告，列出 AI 领域里刚开始冒头的名字：新模型、新产品、新工具、新仓库。在它们最早被说出来的地方抓，而不是等关键词工具里有数据再看。
 
@@ -24,7 +24,7 @@
 
 ![雷达的流程（上游 0.4 版示意图）：六类信号、名字判断、带首页竞争的新词表、日报和复核；四种用法：命令行、3 个 Agent Skill、MCP 服务器、pains 痛点命令](docs/make_diagram/radar.zh.gif)
 
-图是上游 0.4 版的流程，紫色标「新增」的是 0.3/0.4 加的 ⑥ 收入、⑦ 求助、首页竞争、⚡ 和 `pains`。本 fork 后来加的 ⑧ 官方、⑨ HN、⑩ Product Hunt、慢线和多窗口复盘没有画进去（重画需要 `rsvg-convert` 和 `ffmpeg`，暂时没重画）；以文字和下表为准。
+图是上游 0.4 版的流程，紫色标「新增」的是 0.3/0.4 加的 ⑥ 收入、⑦ 求助、首页竞争、⚡ 和 `pains`。本项目后来加的 ⑧ 官方、⑨ HN、⑩ Product Hunt、慢线和多窗口复盘没有画进去（重画需要 `rsvg-convert` 和 `ffmpeg`，暂时没重画）；图里的 3 个 Agent Skill 和插件入口也已移除，现在 agent 接口只有 MCP。以文字和下表为准。
 
 | 信号 | 抓什么 | 需要 | 花费 |
 |---|---|---|---|
@@ -269,32 +269,9 @@ python scripts/gsc_auth.py gsc_client.json   # 打开一次浏览器授权，写
 
 `--mail` 通过 [Resend](https://resend.com) 发送报告。设置 `RESEND_API_KEY`、`EMAIL_FROM`（你在 Resend 验证过的域名下的地址）和 `RADAR_EMAIL_TO`（多个用逗号分隔）。要 HTML 版需要 `pip install markdown`。
 
-## 在 agent 里用：skill 和 MCP 服务器
+## 在 agent 里用：MCP 服务器
 
-### Skill
-
-`skills/` 里有三个 [Agent Skill](https://agentskills.io/home)：一个把整件事做完，另外两个是拆开的两半，给想分开用的人。它们是上游版本，还没有加本 fork 的慢线和精度命令。
-
-| Skill | 做什么 |
-|---|---|
-| `new-term-radar` | 一次跑完：今天的新名字，加上它们的关键词优先级表。也可以直接给它你已有的名字。从这个开始 |
-| `ai-listening` | 把各路信号最近 24 小时的新东西收集起来、去重，出一份名字报告 |
-| `seo-new-keywords-research` | 给它名字，或者一段提到这些名字的原始文本，它返回关键词优先级表：每个名字背后的通用词，经过筛选、估算规模并给出决策 |
-
-```bash
-npx skills add zhuyansen/new-term-radar
-```
-
-在 Claude Code 里，这三个 skill 也可以作为插件安装：
-
-```
-/plugin marketplace add zhuyansen/new-term-radar
-/plugin install new-term-radar@new-term-radar
-```
-
-然后对你的 agent 说「今天有哪些 AI 新词」「出一份 AI listening 报告」或「给 PhotoCraft 和 SynthID Detector 做关键词调研」。skill 会在本机没有这个仓库时把它克隆到 `~/new-term-radar`，在任何付费运行之前先告诉你大概花多少，表不完整时也会说明。
-
-### MCP 服务器
+仓库不再附带 Agent Skill 或 Claude Code 插件（2026-10-18 移除：三套接口各自漂，MCP 一套就够）。下面是 MCP 服务器的配置。
 
 给支持 MCP 的客户端用（Claude Code、Cursor、Claude Desktop）：
 
@@ -390,6 +367,6 @@ python -m pytest -q tests
 
 ## 许可
 
-MIT。这套雷达提取自 [agentskillshub.top](https://agentskillshub.top) 背后每天在跑的版本；本 fork 的改动见 [docs/里程碑.md](docs/里程碑.md)。
+MIT。这套雷达提取自 [agentskillshub.top](https://agentskillshub.top) 背后每天在跑的版本；本项目的改动见 [docs/里程碑.md](docs/里程碑.md)。
 
 <!-- mcp-name: io.github.zhuyansen/new-term-radar -->
