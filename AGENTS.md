@@ -219,7 +219,7 @@ Still open after M4:
 - The seed list is 20 x 8; the 115 roots and 63 seeds are not in the repository, so a different list is a config edit.
 - The tuned weekly cost (~$0.19) is an estimate until the next paid run prints its split.
 
-M5 completed on 2026-10-18 (`67a57e1`):
+M5 completed on 2026-10-18 (`67a57e1`, `d2de330`):
 
 - `radar/review.py`: windows come from `review.windows` (fast 1/3/7/14, slow 14/30). 1d/3d are local and free: `name_real` is the judge's strong bar (`review.name_real_score`, 0.80) and `persistence` is `last_seen > first_seen`; the row keeps `age_days`, so a window read late says so in the report. 7d/14d (and slow 14d/30d) are one Trends series per lane read at the final check, each horizon cut at `first_seen + days`: a late 7d row still says what happened in the first week, and two windows never pay twice.
 - `save_review()` replaces `save_verdict()`: one row per term and window, `name_real` / `persistence` / `search_rise` separate, the old mixed verdict only inside `metrics`. The 14d/30d rows are `final` and move the term to `watching`.
