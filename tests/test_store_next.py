@@ -46,41 +46,125 @@ def test_due_skips_terms_already_reviewed_or_too_young(tmp_path):
     store.record(conn, [_lead("young", ["hf"])], date(2026, 10, 8))
 
     assert [(t, d.isoformat()) for t, d, _ in store.due(conn, DAY, 14, 5)] == [("old", "2026-09-25")]
-    store.save_verdict(conn, "old", "hit", 2, {"k": 1}, DAY)
+    store.save_review(conn, "old", 14, DAY, name_real=1, persistence=0, search_rise=1, lead_days=2,
+                      metrics={"k": 1}, final=True)
     assert store.due(conn, DAY, 14, 5) == []
 
 
-def test_save_verdict_writes_a_14_day_review_and_keeps_the_verdict(tmp_path):
+def test_due_takes_a_lane_and_can_be_uncapped(tmp_path):
+    conn = store.connect(tmp_path)
+    store.record(conn, [_lead("figcraft", ["breakout"])], date(2026, 9, 25))
+    store.record(conn, [_lead("ai tattoo generator", ["autocomplete"])], date(2026, 9, 25))
+
+    assert [t for t, _, _ in store.due(conn, DAY, 1, None, "fast")] == ["figcraft"]
+    assert [t for t, _, _ in store.due(conn, DAY, 14, 5, "slow")] == ["ai tattoo generator"]
+    assert store.due(conn, DAY, 14, 5, "fast") == [("figcraft", date(2026, 9, 25), ["figcraft"])]
+
+
+def test_save_review_writes_each_window_and_marks_the_final_one(tmp_path):
     conn = store.connect(tmp_path)
     store.record(conn, [_lead("strata", ["x"])], date(2026, 9, 25))
-    conn.execute("UPDATE terms SET name_score = 0.8")
 
-    store.save_verdict(conn, "strata", "hit", 3, {"k": 0.4}, date(2026, 10, 9))
+    store.save_review(conn, "strata", 7, date(2026, 10, 2), name_real=1, persistence=0, search_rise=1,
+                      lead_days=2, metrics={"verdict": "hit"})
+    store.save_review(conn, "strata", 14, date(2026, 10, 9), name_real=1, persistence=1, search_rise=1,
+                      lead_days=3, metrics={"verdict": "hit"}, final=True)
+    store.save_review(conn, "strata", 14, date(2026, 10, 10), name_real=0, persistence=1, search_rise=0,
+                      lead_days=None, metrics={"verdict": "miss"}, final=True)   # one row per window: the newer wins
 
-    days, checked, rise, lead, metrics = conn.execute(
-        "SELECT days, checked_at, search_rise, lead_days, metrics FROM reviews").fetchone()
-    assert (days, checked, rise, lead) == (14, "2026-10-09", 1, 3)
-    assert json.loads(metrics) == {"k": 0.4, "verdict": "hit"}
+    rows = conn.execute("SELECT days, checked_at, name_real, persistence, search_rise, lead_days"
+                        " FROM reviews ORDER BY days").fetchall()
+    assert rows == [(7, "2026-10-02", 1, 0, 1, 2), (14, "2026-10-10", 0, 1, 0, None)]
     assert conn.execute("SELECT status FROM terms").fetchone()[0] == "watching"
 
 
 def test_summary_counts_each_signal_once_per_term(tmp_path):
     conn = store.connect(tmp_path)
     store.record(conn, [_lead("a", ["x", "hf"]), _lead("b", ["x"])], date(2026, 9, 25))
-    store.save_verdict(conn, "a", "hit", 2, {}, date(2026, 10, 9))
-    store.save_verdict(conn, "b", "miss", None, {}, date(2026, 10, 9))
+    store.save_review(conn, "a", 14, date(2026, 10, 9), name_real=1, search_rise=1, lead_days=2, metrics={})
+    store.save_review(conn, "b", 14, date(2026, 10, 9), name_real=0, search_rise=0, metrics={})
 
     summ = store.summary(conn, DAY)
 
-    assert summ["by_signal"]["x"] == {"checked": 2, "hit": 1, "median_lead": 2}
-    assert summ["by_signal"]["hf"] == {"checked": 1, "hit": 1, "median_lead": 2}
+    assert summ["by_signal"]["x"] == {"checked": 2, "hit": 1, "real": 1, "scored": 2, "again": 0, "seen": 0, "median_lead": 2}
+    assert summ["by_signal"]["hf"] == {"checked": 1, "hit": 1, "real": 1, "scored": 1, "again": 0, "seen": 0, "median_lead": 2}
     assert summ["pending"] == 0
+
+
+def test_summary_splits_windows_and_lanes(tmp_path):
+    conn = store.connect(tmp_path)
+    store.record(conn, [_lead("figcraft", ["x"])], date(2026, 9, 25))
+    store.record(conn, [_lead("ai tattoo generator", ["autocomplete"])], date(2026, 9, 25))
+    store.save_review(conn, "figcraft", 1, date(2026, 10, 9), name_real=1, persistence=0, metrics={})
+    store.save_review(conn, "figcraft", 14, date(2026, 10, 9), name_real=1, persistence=1, search_rise=1,
+                      lead_days=4, metrics={"verdict": "hit"}, final=True)
+    store.save_review(conn, "ai tattoo generator", 30, date(2026, 10, 9), search_rise=0,
+                      metrics={"verdict": "miss"}, final=True)     # a slow word has no name_real
+
+    summ = store.summary(conn, DAY)
+
+    assert summ["windows"]["fast"]["1"]["x"] == {"checked": 1, "hit": 0, "real": 1, "scored": 1, "again": 0, "seen": 1,
+                                                 "median_lead": None}
+    assert summ["windows"]["fast"]["14"]["x"]["hit"] == 1
+    assert summ["windows"]["slow"]["30"]["autocomplete"] == {"checked": 1, "hit": 0, "real": 0, "scored": 0, "again": 0, "seen": 0,
+                                                             "median_lead": None}
+    assert summ["by_signal"] == summ["windows"]["fast"]["14"]
+    assert summ["pending_windows"] == {"fast": {"14": 0}, "slow": {"30": 0}}
+
+
+def test_next_due_is_the_first_future_window(tmp_path):
+    conn = store.connect(tmp_path)
+    store.record(conn, [_lead("old", ["x"])], date(2026, 9, 25))
+    store.record(conn, [_lead("young", ["hf"])], date(2026, 10, 8))
+
+    assert store.next_due(conn, DAY, 14, "fast") == date(2026, 10, 22)
+
+
+def test_samples_take_echo_terms_once_and_keep_the_volume(tmp_path):
+    conn = store.connect(tmp_path)
+    store.record(conn, [_lead("bitbucket", ["sitemap"]), _lead("zotero", ["sitemap"]),
+                        _lead("figcraft", ["breakout"])], date(2026, 9, 25))
+
+    got = store.echo_candidates(conn, 10)
+
+    assert [r["term"] for r in got] == ["bitbucket", "zotero"]
+    assert {r["source"] for r in got} == {"sitemap"}
+    store.save_sample(conn, got[0]["term_id"], "sitemap", DAY, 2400000, "2026-09", "searched")
+    store.save_sample(conn, got[1]["term_id"], "sitemap", DAY, 0, "2026-09", "new")
+    assert store.echo_candidates(conn, 10) == []        # a term is never sampled twice
+    assert store.sample_summary(conn, date(2026, 9, 1)) == {
+        "sitemap": {"sampled": 2, "new": 1, "searched": 1, "unknown": 0}}
+
+
+def test_merging_carries_the_fast_window(tmp_path):
+    conn = store.connect(tmp_path)
+    slow = conn.execute("INSERT INTO terms (canonical, first_seen, last_seen, window)"
+                        " VALUES ('ai tattoo generator','2026-10-15','2026-10-15','slow')").lastrowid
+    fast = conn.execute("INSERT INTO terms (canonical, first_seen, last_seen, window)"
+                        " VALUES ('tattoo ai','2026-10-16','2026-10-16','fast')").lastrowid
+
+    store.merge_terms(conn, slow, fast)
+
+    assert conn.execute("SELECT window FROM terms").fetchone()[0] == "fast"
+
+
+def test_merging_two_slow_words_stays_slow(tmp_path):
+    conn = store.connect(tmp_path)
+    a = conn.execute("INSERT INTO terms (canonical, first_seen, last_seen, window)"
+                     " VALUES ('ai tattoo generator','2026-10-15','2026-10-15','slow')").lastrowid
+    b = conn.execute("INSERT INTO terms (canonical, first_seen, last_seen, window)"
+                     " VALUES ('tattoo generator ai','2026-10-16','2026-10-16','slow')").lastrowid
+
+    store.merge_terms(conn, a, b)
+
+    assert conn.execute("SELECT window FROM terms").fetchone()[0] == "slow"
 
 
 def test_leads_reads_the_new_tables(tmp_path):
     conn = store.connect(tmp_path)
     store.record(conn, [_lead("hy memory", ["hf", "x"], named=0.9)], DAY)
-    store.save_verdict(conn, "hy memory", "hit", 4, {}, DAY)
+    store.save_review(conn, "hy memory", 14, DAY, name_real=1, search_rise=1, lead_days=4,
+                      metrics={"verdict": "hit"})
 
     got = store.leads(conn, days=7, today=DAY)
 
@@ -184,9 +268,9 @@ def test_a_later_echo_does_not_demote_a_name_a_real_signal_found(tmp_path):
 
 def test_pending_does_not_count_echoes(tmp_path):
     conn = store.connect(tmp_path)
-    store.record(conn, [_lead("bitbucket", ["sitemap"]), _lead("figcraft", ["breakout"])], DAY)
+    store.record(conn, [_lead("bitbucket", ["sitemap"]), _lead("figcraft", ["breakout"])], date(2026, 9, 25))
 
-    assert store.summary(conn, DAY)["pending"] == 1
+    assert store.summary(conn, DAY)["pending"] == 1        # figcraft reached the 14-day window; bitbucket is an echo
 
 
 def test_a_term_with_no_signal_is_not_an_echo(tmp_path):

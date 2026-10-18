@@ -292,12 +292,15 @@ def test_store_due_verdict_and_summary(tmp_path):
     store.record(conn, [_lead("young", ["hf"])], date(2026, 10, 8))
     today = date(2026, 10, 10)
     assert [d[0] for d in store.due(conn, today, 14, 5)] == ["flop", "strata"]
-    store.save_verdict(conn, "strata", "hit", 2, {}, today)
-    store.save_verdict(conn, "flop", "miss", None, {}, today)
+    store.save_review(conn, "strata", 14, today, name_real=1, search_rise=1, lead_days=2, metrics={})
+    store.save_review(conn, "flop", 14, today, name_real=0, search_rise=0, metrics={})
     assert store.due(conn, today, 14, 5) == []
     summ = store.summary(conn, today)
-    assert summ["pending"] == 1 and summ["by_signal"]["x"] == {"checked": 1, "hit": 1, "median_lead": 2}
-    assert summ["by_signal"]["hf"] == {"checked": 1, "hit": 0, "median_lead": None}
+    assert summ["pending"] == 1 and summ["due_windows"]["fast"]["14"] == 0
+    assert summ["by_signal"]["x"] == {"checked": 1, "hit": 1, "real": 1, "scored": 1,
+                                      "again": 0, "seen": 0, "median_lead": 2}
+    assert summ["by_signal"]["hf"] == {"checked": 1, "hit": 0, "real": 0, "scored": 1,
+                                       "again": 0, "seen": 0, "median_lead": None}
 
 
 def test_store_recent_sources_are_only_x_and_hf(tmp_path):
@@ -352,16 +355,18 @@ def test_review_sends_one_trends_task_per_call():
     assert calls[0]["arguments"]["body"][0]["date_to"] == "2026-10-09" and calls[3]["arguments"]["body"][0]["date_to"] == "2026-10-17"
 
 
-def test_review_stores_the_verdict(cfg, tmp_path, monkeypatch):
+def test_review_stores_each_window(cfg, tmp_path, monkeypatch):
     conn = store.connect(tmp_path)
-    store.record(conn, [_lead("niko strata", ["breakout"])], SEEN)
+    store.record(conn, [_lead("niko strata", ["breakout"], named=0.9)], SEEN)
     points = [{"date_from": (date(2026, 9, 19) + timedelta(days=i)).isoformat(), "values": [v]}
               for i, v in enumerate([0, 0, 0, 0, 0, 0, 0, 0, 0, 30, 30, 100, 0, 0])]
     answer = {"tasks": [{"result": [{"items": [{"data": points}]}]}]}
     monkeypatch.setattr(review.aisa, "call_all", lambda calls: ({c["call_id"]: answer for c in calls}, 1200))
     out = review.review(cfg, conn, date(2026, 10, 10))
-    assert out["checked"] == [{"term": "niko strata", "first_seen": "2026-09-25", "verdict": "hit", "lead_days": 3}]
-    metrics, lead = conn.execute("SELECT metrics, lead_days FROM reviews").fetchone()
+    paid = {r["days"]: r for r in out["checked"] if r["days"] >= 7}
+    assert paid[14] == {"term": "niko strata", "days": 14, "lane": "fast", "first_seen": "2026-09-25",
+                        "name_real": 1, "persistence": 0, "search_rise": 1, "lead_days": 3}
+    metrics, lead = conn.execute("SELECT metrics, lead_days FROM reviews WHERE days = 14").fetchone()
     assert (json.loads(metrics)["verdict"], lead) == ("hit", 3)
 
 
@@ -581,11 +586,12 @@ def test_keyword_table_marks_brands_and_generic_terms_become_leads(cfg, tmp_path
 
 def test_review_ignores_the_unsettled_days(cfg, tmp_path, monkeypatch):
     conn = store.connect(tmp_path)
-    store.record(conn, [_lead("ai image detector", ["usecase"])], date(2026, 9, 28))
+    store.record(conn, [_lead("ai image detector", ["breakout"])], TODAY - timedelta(days=14))
     points = [{"date_from": d.isoformat(), "values": [v]} for d, v in _daily([5] * 43 + [0, 100])]
     answer = {"tasks": [{"result": [{"items": [{"data": points}]}]}]}
     monkeypatch.setattr(review.aisa, "call_all", lambda calls: ({c["call_id"]: answer for c in calls}, 1200))
-    assert review.review(cfg, conn, TODAY)["checked"][0]["verdict"] == "miss"
+    out = review.review(cfg, conn, TODAY)
+    assert next(r for r in out["checked"] if r["days"] == 14)["search_rise"] == 0     # 0, 100 are unsettled
 
 
 def test_screen_drops_loosely_related_keywords_and_keeps_all_when_the_call_fails(monkeypatch):

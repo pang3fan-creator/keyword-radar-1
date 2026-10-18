@@ -15,14 +15,15 @@ Signals:
   ⑨ HN        Show HN stories above a point floor that no earlier run read (Algolia, no key)
   ⑩ PH        launches ranked by votes in the AI topic (Product Hunt GraphQL, PH_API_KEY)
   ④ gsc       queries your own site got impressions for, for the first time (optional)
-  ⑤ review    leads from 14 days ago checked in Google Trends; hit rate per signal (AIsa)
+  ⑤ review    every term at 1d/3d (free) and 7d/14d or 14d/30d (Trends), by signal (AIsa)
   usecases    the generic terms behind today's names, sized against a benchmark keyword (AIsa)
 
-  python -m radar slow     [--out slow.md] [--free]   the weekly combo-word list (slow lane)
-  python -m radar keywords "name one" "name two" [--repo "name one=owner/repo"] [--json]
-  python -m radar leads    [--days 7] [--json]
-  python -m radar pains    "keyword" [--extension ID] [--json]   what people complain about for a kind of tool
-  python -m radar mcp      the MCP server on stdio (needs the `mcp` package)
+  python -m radar slow       [--out slow.md] [--free]   the weekly combo-word list (slow lane)
+  python -m radar precision  [--n 10] [--json]          the sitemap/new-site name precision sample
+  python -m radar keywords   "name one" "name two" [--repo "name one=owner/repo"] [--json]
+  python -m radar leads      [--days 7] [--json]
+  python -m radar pains      "keyword" [--extension ID] [--json]   what people complain about for a kind of tool
+  python -m radar mcp        the MCP server on stdio (needs the `mcp` package)
 
 `keywords` builds the keyword table for names you give it, now (about $0.05 a name plus
 $0.09 a call for the volume lookup). `leads` lists what the radar has kept, with the
@@ -32,6 +33,10 @@ review's verdicts and the hit rate per signal; it costs nothing.
 fast lane's own chain (volume, Trends shape, page one) on the biggest. About $0.15 a run;
 `--free` skips every paid step and prints the candidates only. Its words never take a
 name slot or one of the five reads.
+
+`precision` samples the sitemap/new-site echoes by hand once a month: one batch of Google
+Ads monthly searches tells an old product (`bitbucket`) from a name with no demand yet.
+About $0.09 a run: the volume lookup has a base charge, so ten words cost a batch; the report aggregates the last 90 days.
 
 `sources` runs only ① (they change by the hour) and writes a report only when there is a
 name or an error. `daily` runs everything; give it `--skip x,hf` when `sources` runs
@@ -49,8 +54,8 @@ import sys
 from datetime import date, datetime
 from pathlib import Path
 
-from . import (asks, breakout, config, env, gsc, hn, new_sites, notify, official, pains, ph, report, review,
-               revenue, sitemaps, slow, sources, store, usecases)
+from . import (asks, breakout, config, env, gsc, hn, new_sites, notify, official, pains, ph, precision,
+               report, review, revenue, sitemaps, slow, sources, store, usecases)
 from .i18n import t
 
 SKIPPABLE = {"x", "hf", "breakout", "sitemaps", "newsites", "revenue", "asks", "gsc", "review", "judge", "usecases",
@@ -130,10 +135,15 @@ def cmd_daily(args, cfg: dict, state: Path) -> int:
                                extra.get("usecases", {}), extra.get("tutorials", {}))
     errors = [f"{k}: {v['error']}" for k, v in {**blocks, "gsc": found, **extra}.items()
               if isinstance(v, dict) and v.get("error")]
+    errors += [f"review: {e}" for e in rev.get("errors") or []]      # a failed Trends window is not silence
+    if rev.get("error"):
+        errors.append(f"review: {rev['error']}")
+    paid = [r for r in rev.get("checked") or [] if r["days"] >= review.TRENDS_FROM]
     run(lambda: {"run": store.record_run(
         conn, "daily", started, datetime.now().isoformat(timespec="seconds"), spent,
-        {"leads": len(report.to_record(cfg, lead)), "reviewed": len(rev.get("checked") or [])}, errors)})
-    summ = run(lambda: store.summary(conn))
+        {"leads": len(report.to_record(cfg, lead)), "reviewed": len(paid),
+         "checked": len(rev.get("checked") or [])}, errors)})
+    summ = run(lambda: store.summary(conn, windows=cfg["review"]["windows"]))
     text = report.daily(cfg, lead, blocks, found, rev, summ, extra)
     if args.out:
         Path(args.out).with_suffix(".json").write_text(json.dumps(
@@ -152,9 +162,9 @@ def keyword_table(cfg: dict, state: Path, names: list[str], repos: dict[str, str
     return uc, "\n".join(report.keyword_table(cfg, uc)).strip() + "\n"
 
 
-def kept_leads(state: Path, days: int) -> dict:
+def kept_leads(state: Path, days: int, windows: dict | None = None) -> dict:
     conn = store.connect(state)
-    return {"leads": store.leads(conn, days), "hit_rates": store.summary(conn)}
+    return {"leads": store.leads(conn, days), "hit_rates": store.summary(conn, windows=windows)}
 
 
 def cmd_slow(args, cfg: dict, state: Path) -> int:
@@ -170,6 +180,23 @@ def cmd_slow(args, cfg: dict, state: Path) -> int:
         conn, "slow", started, datetime.now().isoformat(timespec="seconds"), result["cost_micros"],
         {"rows": len(result["rows"]), "candidates": result["candidates"], "paid": result["paid"]},
         [*result["errors"], *result["paid_errors"]])})
+    return 0
+
+
+def cmd_precision(args, cfg: dict, state: Path) -> int:
+    started = datetime.now().isoformat(timespec="seconds")
+    conn = store.connect(state)
+    result = precision.run(cfg, conn, n=args.n)
+    out = json.dumps(result, ensure_ascii=False, indent=1, default=str) if args.json \
+        else report.precision_sample(cfg, result)
+    if args.out:
+        Path(args.out).write_text(out)
+    print(out)
+    counts = {label: sum(1 for r in result["sampled"] if r["label"] == label)
+              for label in ("new", "searched", "unknown")}
+    run(lambda: {"run": store.record_run(
+        conn, "precision", started, datetime.now().isoformat(timespec="seconds"), result["cost_micros"],
+        {"sampled": len(result["sampled"]), **counts}, result["errors"])})
     return 0
 
 
@@ -210,9 +237,23 @@ def cmd_leads(args, state: Path) -> int:
     for r in data["leads"]:
         verdict = f" · {r['verdict']}" + (f" ({r['days_ahead']} days ahead)" if r["days_ahead"] is not None else "") if r["verdict"] else ""
         print(f"{r['first_seen']}  {r['term']}  [{', '.join(r['signals'])}]{verdict}  {r['note']}")
-    for kind, s in data["hit_rates"]["by_signal"].items():
-        print(f"hit rate {kind}: {s['hit']}/{s['checked']}")
-    print(f"{len(data['leads'])} leads in the last {args.days} days; {data['hit_rates']['pending']} awaiting review")
+    rates = data["hit_rates"]
+    for lane, windows in rates["windows"].items():
+        for days, by_signal in windows.items():
+            for kind, s in by_signal.items():
+                if not s["checked"]:
+                    continue
+                strong = f"{s['real']}/{s['scored']}" if s["scored"] else t("dash")
+                if int(days) < review.TRENDS_FROM:      # a free window has no search_rise
+                    again = f"{s['again']}/{s['seen']}" if s["seen"] else t("dash")
+                    print(f"{lane} {days}d {kind}: strong {strong}, again {again}")
+                else:
+                    lead = s["median_lead"] if s["median_lead"] is not None else t("dash")
+                    print(f"{lane} {days}d {kind}: hit {s['hit']}/{s['checked']}, strong {strong}, lead {lead}")
+    for source, s in (rates.get("samples") or {}).items():
+        print(f"{source} precision: {s['new']}/{s['sampled']} new ({s['searched']} searched, {s['unknown']} unknown)")
+    waits = ", ".join(f"{lane} {days}d {n}" for lane, w in rates["pending_windows"].items() for days, n in w.items())
+    print(f"{len(data['leads'])} leads in the last {args.days} days; waiting: {waits}")
     return 0
 
 
@@ -235,11 +276,12 @@ def main(argv: list[str] | None = None) -> int:
         return serve_mcp()
     prog = "python -m radar" if __package__ == "radar" else "new-term-radar"  # installed, the package has another name
     p = argparse.ArgumentParser(prog=prog, description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("command", choices=["daily", "sources", "slow", "keywords", "leads", "pains"])
+    p.add_argument("command", choices=["daily", "sources", "slow", "precision", "keywords", "leads", "pains"])
     p.add_argument("names", nargs="*", help="for `keywords`: the names to read")
     p.add_argument("--repo", action="append", default=[], metavar="NAME=OWNER/REPO", help="for `keywords`: a name's GitHub repository")
     p.add_argument("--days", type=int, default=7, help="for `leads`: how far back")
-    p.add_argument("--json", action="store_true", help="for `keywords` and `leads`: print JSON")
+    p.add_argument("--json", action="store_true", help="for `keywords`, `leads` and `precision`: print JSON")
+    p.add_argument("--n", type=int, help="for `precision`: how many candidates to sample (default: config)")
     p.add_argument("--config", default="config.json")
     p.add_argument("--state", default="state", help="directory for radar.db and the snapshots")
     p.add_argument("--out", help="write the report (Markdown) here; `daily` also writes a .json beside it")
@@ -270,6 +312,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_pains(args, cfg)
     if args.command == "slow":
         return cmd_slow(args, cfg, state)
+    if args.command == "precision":
+        return cmd_precision(args, cfg, state)
     return cmd_sources(args, cfg, state) if args.command == "sources" else cmd_daily(args, cfg, state)
 
 

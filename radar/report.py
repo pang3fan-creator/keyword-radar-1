@@ -2,8 +2,9 @@
 from __future__ import annotations
 
 import re
+from collections import Counter
 
-from . import opportunity, config, judge, select, usecases
+from . import opportunity, config, judge, review, select, usecases
 from .i18n import T, t
 
 SHOWN = 20
@@ -209,22 +210,132 @@ def _gsc_lines(gsc: dict) -> list[str]:
     return lines + [f"| {_cell(q['query'])} | {q['impressions']} | {q['clicks']} | {q['page']} |" for q in gsc["queries"]]
 
 
+def _kind_label(kind: str) -> str:
+    return t(f"kind_{kind}") if f"kind_{kind}" in T else kind
+
+
+def _kind_order(kind: str) -> int:
+    return KINDS.index(kind) if kind in KINDS else len(KINDS)
+
+
+def _ratio(s: dict, key: str) -> str:
+    """real / scored, or again / seen: a slow word has no name score, so it shows a dash."""
+    seen = s.get("scored" if key == "real" else "seen", 0)
+    return f"{s.get(key, 0)}/{seen}" if seen else t("dash")
+
+
+def _yesno(value: int | None) -> str:
+    return t("dash") if value is None else (t("uc_yes") if value else t("uc_no"))
+
+
 def _review_lines(cfg: dict, rev: dict, summ: dict) -> list[str]:
-    days = cfg["review"]["after_days"]
-    lines = ["", t("review_h", days=days), ""]
-    if rev.get("checked"):
-        lines += [t("review_cols"), "|---|---|---|---|"]
-        lines += [f"| {c['term']} | {c['first_seen']} | {c['verdict']} | {c['lead_days'] if c['lead_days'] is not None else t('dash')} |"
-                  for c in rev["checked"]]
+    """Every window, honestly: the free 1d/3d names, the Trends rise per lane, today's paid
+    rows, the queues, and the terms Trends did not answer for."""
+    lines = ["", t("review_h"), ""]
+    if rev.get("skipped"):
+        return lines + [t("review_none", why=t("skipped"))]
+    if rev.get("error"):
+        return lines + [t("review_failed", why=rev["error"])]
+    if summ.get("error"):
+        return lines + [t("review_failed", why=summ["error"])]
+    nexts = rev.get("next_paid") or {}
+    checked = rev.get("checked") or []
+    groups: dict[int, list[int]] = {}
+    for r in checked:
+        if r["days"] < review.TRENDS_FROM:
+            groups.setdefault(r["days"], []).append(r.get("age_days", r["days"]))
+    parts = []
+    for d, ages in sorted(groups.items()):
+        txt = t("review_free_n", days=d, n=len(ages))
+        if max(ages) > d:                       # a window read late says so: as-of-check, not as-of-day
+            span = str(min(ages)) if min(ages) == max(ages) else f"{min(ages)}-{max(ages)}"
+            txt += " " + t("review_age", span=span)
+        parts.append(txt)
+    free_txt = ", ".join(parts) or t("review_free_none")
+    paid = [r for r in checked if r["days"] >= review.TRENDS_FROM]
+    if paid:
+        paid_txt = ", ".join(t("review_free_n", days=d, n=n) for d, n in sorted(Counter(r["days"] for r in paid).items()))
+    elif rev.get("errors"):
+        paid_txt = t("review_paid_failed")
     else:
-        lines.append(t("review_none", why=_state(rev, t("review_young", days=days))))
-    if summ.get("by_signal"):
-        lines += ["", t("hit_intro", days=summ["window_days"], pending=summ["pending"]), "", t("hit_cols"), "|---|---|---|---|---|"]
-        for k, s in sorted(summ["by_signal"].items(), key=lambda kv: KINDS.index(kv[0]) if kv[0] in KINDS else 99):
-            label = t(f"kind_{k}") if k in KINDS else k
-            lines.append(f"| {label} | {s['checked']} | {s['hit']} | {s['hit'] / s['checked']:.0%} | "
-                         f"{s['median_lead'] if s['median_lead'] is not None else t('dash')} |")
+        paid_txt = t("review_paid_none", next=t("review_next", day=nexts.get("fast") or t("dash")))
+    lines.append(t("review_today", free=free_txt, paid=paid_txt))
+
+    windows = summ.get("windows") or {}
+    fast = windows.get("fast") or {}
+    slow = windows.get("slow") or {}
+    first, third = fast.get("1") or {}, fast.get("3") or {}
+    if first or third:
+        lines += ["", t("review_names_intro", days=summ.get("window_days", 60)), "",
+                  t("review_names_cols"), "|---|---|---|---|---|"]
+        for kind in sorted(set(first) | set(third), key=_kind_order):
+            a, b = first.get(kind) or {}, third.get(kind) or {}
+            lines.append(f"| {_kind_label(kind)} | {a.get('checked', 0)} | {_ratio(a, 'real')} | "
+                         f"{b.get('checked', 0)} | {_ratio(b, 'again')} |")
+    for lane, table, d1, d2 in (("fast", fast, 7, 14), ("slow", slow, 14, 30)):
+        a, b = table.get(str(d1)) or {}, table.get(str(d2)) or {}
+        if not a and not b:
+            continue
+        lines += ["", t("review_rise_intro", lane=t("lane_" + lane), days=summ.get("window_days", 60)), "",
+                  t("review_rise_cols", d1=d1, d2=d2), "|---|---|---|---|---|---|"]
+        for kind in sorted(set(a) | set(b), key=_kind_order):
+            x, y = a.get(kind) or {}, b.get(kind) or {}
+            lead = y.get("median_lead")
+            lines.append(f"| {_kind_label(kind)} | {x.get('checked', 0)} | {x.get('hit', 0)} | "
+                         f"{y.get('checked', 0)} | {y.get('hit', 0)} | "
+                         f"{lead if lead is not None else t('dash')} |")
+    if paid:
+        lines += ["", t("review_term_h"), "", t("review_term_cols"), "|---|---|---|---|---|"]
+        for r in paid:
+            lines.append(f"| {_cell(r['term'])} | {t('lane_' + r['lane'])} {r['days']}d | "
+                         f"{_yesno(r['name_real'])} | {_yesno(r['search_rise'])} | "
+                         f"{r['lead_days'] if r['lead_days'] is not None else t('dash')} |")
+    pending = summ.get("pending_windows") or {}
+    due = summ.get("due_windows") or {}
+    lines.append("")
+    for lane in ("fast", "slow"):
+        lines.append(t("review_wait", lane=t("lane_" + lane),
+                       n=sum((pending.get(lane) or {}).values()),
+                       due=sum((due.get(lane) or {}).values()), day=nexts.get(lane) or t("dash")))
+    lines += ["", t("review_legend", cut=cfg["review"]["name_real_score"])]
+    for err in rev.get("errors") or []:
+        lines.append(t("review_err", why=err))
     return lines
+
+
+def _precision_lines(cfg: dict, summ: dict) -> list[str]:
+    """The sitemap/new-site sample: echo candidates labeled by whether they already had demand."""
+    lines = ["", t("precision_h"), ""]
+    if summ.get("error"):
+        return []                               # the review section already names the failure
+    samples = summ.get("samples") or {}
+    if not samples:
+        return lines + [t("precision_none", n=cfg["review"]["sampling"]["per_run"])]
+    totals = {k: sum(s.get(k, 0) for s in samples.values())
+              for k in ("sampled", "new", "searched", "unknown")}
+    lines.append(t("precision_intro", days=summ.get("sample_days", 90),
+                   cut=cfg["review"]["sampling"]["existing_volume"], **totals))
+    lines += ["", t("precision_cols"), "|---|---|---|---|---|"]
+    for source, s in sorted(samples.items()):
+        lines.append(f"| {source} | {s['sampled']} | {s['new']} | {s['searched']} | {s['unknown']} |")
+    return lines
+
+
+def precision_sample(cfg: dict, result: dict) -> str:
+    """The `radar precision` output: ten candidates, their searches a month, the label."""
+    lines = [t("precision_h"), ""]
+    if not result.get("sampled"):
+        lines.append(t("precision_no_candidates") if not result.get("errors")
+                     else t("precision_none", n=cfg["review"]["sampling"]["per_run"]))
+    else:
+        lines += [t("precision_term_cols"), "|---|---|---|---|"]
+        for r in result["sampled"]:
+            volume = r["volume"] if r["volume"] is not None else t("dash")
+            lines.append(f"| {_cell(r['term'])} | {r['source']} | {volume} | {t('sample_' + r['label'])} |")
+    for err in result.get("errors") or []:
+        lines.append(t("precision_err", why=err))
+    lines.append(t("cost", cost=_cost(result)))
+    return "\n".join(lines) + "\n"
 
 
 def _source_line(kind: str, block: dict) -> str:
@@ -314,6 +425,7 @@ def daily(cfg: dict, lead: list[dict], b: dict[str, dict], gsc: dict, rev: dict,
     lines += _tutorial_lines(extra.get("tutorials", {"skipped": True}))
     lines += _gsc_lines(gsc)
     lines += _review_lines(cfg, rev, summ)
+    lines += _precision_lines(cfg, summ)
     lines += _status_lines(b, extra, lead)
     lines.append(t("cost", cost=_cost(b["x"], rev, b.get("newsite", {}), b.get("ask", {}), extra.get("usecases", {}),
                                       extra.get("tutorials", {}))))

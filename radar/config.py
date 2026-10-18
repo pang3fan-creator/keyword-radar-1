@@ -43,7 +43,12 @@ DEFAULTS = {
         "microsoft-research": "https://www.microsoft.com/en-us/research/feed/"},
                  "max_per_run": 10, "lookback_days": 7},
     "new_sites": {"queries": {"ai": "%ai%"}, "weekday": 0, "window_days": 90, "min_etv": 1000, "min_keywords": 20},
-    "review": {"after_days": 14, "per_day": 5},
+    # Review windows: 1d/3d are local and free; 7d/14d and 14d/30d come from one Trends series
+    # per lane (see radar/review.py). 14d is the fast lane's final window, 30d the slow lane's.
+    # `name_real_score` is the judge's strong bar; `sampling` sizes the sitemap/new-site
+    # precision sample and the monthly searches that count as "already exists".
+    "review": {"windows": {"fast": [1, 3, 7, 14], "slow": [14, 30]}, "per_day": 5,
+               "name_real_score": 0.8, "sampling": {"per_run": 10, "existing_volume": 1000}},
     "usecases": {"per_day": 5, "model": "claude-sonnet-4-6", "min_volume": 50, "trends_max": 10, "recheck_days": 3,
                  "location_code": 2840, "benchmarks": BENCHMARKS, "min_daily": 300, "related": True, "related_geo": "US",
                  "country_trends": True, "country_min_volume": 1000, "country_max": 8},

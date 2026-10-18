@@ -205,7 +205,7 @@ and from `sources`:
 | `judge` | `model` (any chat model on AIsa) and `min_score` (0.5) |
 | `breakout` | `window_days`, `min_stars`, `velocity_min` (stars a day), `delta_min` (stars since yesterday) |
 | `new_sites` | `queries`: a name and a SQL LIKE pattern on the domain (`"%ai%"`), one paid query each; `weekday` (0 = Monday) |
-| `review` | `after_days` (14) and `per_day` (5 leads a day) |
+| `review` | `windows` (1d/3d free, 7d/14d fast, 14d/30d slow), `per_day` (5 leads a day per lane), `name_real_score` (0.8) and `sampling` (10 sitemap candidates a run; `existing_volume` 1000/month) |
 | `usecases` | The keyword table. `per_day` (names read a day, 0 = off), `model`, `benchmark` (the keyword sizes are compared with), `min_volume` (monthly searches a phrase needs), `min_daily` (searches a day for "prioritize"), `recheck_days` (3), `related` (use related queries when `GOANYAPI_API_KEY` is set), `related_geo` (`US`), `country_trends` (read the bigger rows' curves from that country), `country_min_volume` (1000) and `country_max` (8) |
 | `gsc` | `site` (`sc-domain:example.com`) and `token_file`. Leave `{}` to turn the signal off |
 

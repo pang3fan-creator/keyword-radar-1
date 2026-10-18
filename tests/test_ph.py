@@ -19,6 +19,23 @@ def test_the_name_is_the_part_before_the_subtitle():
     assert ph.name("  Spiralens  ") == "spiralens"
 
 
+def test_an_article_or_launch_verb_does_not_hide_the_feature():
+    assert ph.name("Notion: The agents") == "notion agents"
+    assert ph.name("Notion: for your agents") == "notion agents"
+    assert ph.name("Notion: Introducing Agents") == "notion agents"
+    assert ph.name("Acme: The AI browser") == "acme ai"
+
+
+def test_a_sentence_after_the_colon_keeps_the_brand_alone():
+    assert ph.name("Linear: How we built the issue tracker") == "linear"
+    assert ph.name("Acme: for teams") == "acme teams"
+
+
+def test_a_second_colon_and_a_by_suffix_stay_out_of_the_name():
+    assert ph.name("Foo: Bar: Baz") == "foo bar"
+    assert ph.name("GPU Terminal by Context.dev") == "gpu terminal"
+
+
 def test_a_launch_below_the_vote_floor_is_not_reported(cfg, tmp_path, monkeypatch):
     monkeypatch.setenv("PH_API_KEY", "test")
     monkeypatch.setattr(ph, "_graphql", lambda query, variables: {"posts": {"edges": [

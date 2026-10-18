@@ -1,11 +1,15 @@
 """The radar's memory: terms, their evidence and their reviews, in one SQLite file.
 
 record()          upserts today's terms and adds one signal row per source that found them.
-due()             terms old enough to check in Google Trends and not reviewed yet.
-save_verdict()    hit / miss / no_data, stored as a 14-day review.
+due()             terms that reached one review window and have no review in it yet.
+save_review()     one row per term and window: name_real, persistence, search_rise, lead_days.
+review_facts()    judge score, last sighting and source count for the free windows.
+pending()         terms still waiting for a window: the queue a cap samples.
+next_due()        the first future date a term reaches a window.
 recent_sources()  X and Hugging Face terms the frequent job kept since yesterday.
-summary()         hit rate and median lead per signal.
+summary()         hit rate, real-name share and median lead, per signal, window and lane.
 leads()           what was kept, newest first, with its review verdict.
+echo_candidates() the sitemap/new-site echoes a precision sample is drawn from.
 
 The old `leads` table is still created and still holds the pre-M1 history, but nothing writes
 it any more; scripts/migrate_leads.py copied it into these tables on 2026-10-17.
@@ -22,6 +26,10 @@ from . import entity, select
 
 REVIEW_DAYS = 14
 SUMMARY_WINDOW = 60
+SAMPLE_WINDOW = 90
+# Every term is read at these windows: 1d and 3d are local and free; 7d/14d and 14d/30d come
+# from one Trends series per lane (config.json's review.windows can change the lists).
+WINDOWS = {"fast": (1, 3, 7, 14), "slow": (14, 30)}
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS leads (
   term        TEXT PRIMARY KEY,
@@ -95,6 +103,15 @@ CREATE TABLE IF NOT EXISTS reviews (
   persistence   INTEGER,
   lead_days     INTEGER,
   metrics       TEXT DEFAULT '{}'
+);
+CREATE TABLE IF NOT EXISTS samples (
+  id            INTEGER PRIMARY KEY,
+  term_id       INTEGER NOT NULL REFERENCES terms(id),
+  source        TEXT NOT NULL,
+  sampled_at    TEXT NOT NULL,
+  volume        INTEGER,
+  volume_month  TEXT,
+  label         TEXT
 );
 CREATE TABLE IF NOT EXISTS runs (
   id            INTEGER PRIMARY KEY,
@@ -217,11 +234,12 @@ def record(conn: sqlite3.Connection, rows: list[dict], today: date | None = None
 
 def merge_terms(conn: sqlite3.Connection, kept_id: int, drop_id: int) -> None:
     """Fold one row into another: aliases and dates widen, signals keep one row per source,
-    reviews follow the term. Never drops a signal or a review."""
-    kept = conn.execute("SELECT canonical, aliases, first_seen, last_seen, name_score FROM terms WHERE id = ?",
-                        (kept_id,)).fetchone()
-    drop = conn.execute("SELECT canonical, aliases, first_seen, last_seen, name_score FROM terms WHERE id = ?",
-                        (drop_id,)).fetchone()
+    reviews follow the term. Never drops a signal or a review. The lane is fast if either
+    side is fast, so a slow word a fast signal named is reviewable again."""
+    kept = conn.execute("SELECT canonical, aliases, first_seen, last_seen, name_score, window"
+                        " FROM terms WHERE id = ?", (kept_id,)).fetchone()
+    drop = conn.execute("SELECT canonical, aliases, first_seen, last_seen, name_score, window"
+                        " FROM terms WHERE id = ?", (drop_id,)).fetchone()
     aliases = sorted(set(json.loads(kept[1])) | set(json.loads(drop[1])) | {kept[0], drop[0]})
     for _id, source, first_seen, evidence in conn.execute(
             "SELECT id, source, first_seen, evidence FROM term_signals WHERE term_id = ?", (drop_id,)).fetchall():
@@ -245,11 +263,12 @@ def merge_terms(conn: sqlite3.Connection, kept_id: int, drop_id: int) -> None:
         else:
             conn.execute("DELETE FROM reviews WHERE id = ?", (rid,))
     conn.execute("DELETE FROM terms WHERE id = ?", (drop_id,))     # free the canonical first
+    window = "fast" if "fast" in (kept[5], drop[5]) else (kept[5] or drop[5])
     conn.execute("UPDATE terms SET canonical = ?, aliases = ?, first_seen = ?, last_seen = ?,"
-                 " name_score = ? WHERE id = ?",
+                 " name_score = ?, window = ? WHERE id = ?",
                  (entity.canonical([kept[0], drop[0]]), json.dumps(aliases, ensure_ascii=False),
                   min(kept[2], drop[2]), max(kept[3], drop[3]),
-                  kept[4] if kept[4] is not None else drop[4], kept_id))
+                  kept[4] if kept[4] is not None else drop[4], window, kept_id))
 
 
 def twins(conn: sqlite3.Connection) -> list[tuple[int, int]]:
@@ -292,33 +311,91 @@ def record_run(conn: sqlite3.Connection, command: str, started_at: str, finished
     return cur.lastrowid
 
 
-def due(conn: sqlite3.Connection, today: date, after_days: int, limit: int) -> list[tuple[str, date, list[str]]]:
-    cutoff = (today - timedelta(days=after_days)).isoformat()
-    rows = conn.execute(
-        "SELECT canonical, first_seen, aliases FROM terms t WHERE first_seen <= ?"
-        " AND COALESCE(t.status, 'new') != 'echo' AND COALESCE(t.window, 'fast') != 'slow' AND NOT EXISTS"
-        " (SELECT 1 FROM reviews r WHERE r.term_id = t.id AND r.days = ?)"
-        " ORDER BY first_seen, canonical LIMIT ?", (cutoff, REVIEW_DAYS, limit)).fetchall()
+def due(conn: sqlite3.Connection, today: date, days: int, limit: int | None = None,
+        lane: str = "fast") -> list[tuple[str, date, list[str]]]:
+    """Terms that reached `days` and have no review in that window yet. `limit=None` is for the
+    free windows (1d, 3d): they cost nothing, so there is no reason to sample them."""
+    cutoff = (today - timedelta(days=days)).isoformat()
+    sql = ("SELECT canonical, first_seen, aliases FROM terms t WHERE first_seen <= ?"
+           " AND COALESCE(t.status, 'new') != 'echo' AND COALESCE(t.window, 'fast') = ?"
+           " AND NOT EXISTS (SELECT 1 FROM reviews r WHERE r.term_id = t.id AND r.days = ?)"
+           " ORDER BY first_seen, canonical")
+    params: list = [cutoff, lane, days]
+    if limit is not None:
+        sql += " LIMIT ?"
+        params.append(limit)
+    rows = conn.execute(sql, params).fetchall()
     return [(t, date.fromisoformat(f), json.loads(a)) for t, f, a in rows]
 
 
-def save_verdict(conn: sqlite3.Connection, term: str, verdict: str, lead_days: int | None, trends: dict,
-                 today: date | None = None) -> None:
+def review_facts(conn: sqlite3.Connection, terms: list[str]) -> dict[str, dict]:
+    """What the free windows need: the judge's score, the last sighting and how many signals
+    ever found the term."""
+    names = [t for t in terms if t]
+    if not names:
+        return {}
+    marks = ",".join("?" * len(names))
+    rows = conn.execute(
+        "SELECT t.canonical, t.name_score, t.last_seen,"
+        " (SELECT count(DISTINCT s.source) FROM term_signals s WHERE s.term_id = t.id)"
+        f" FROM terms t WHERE t.canonical IN ({marks})", names).fetchall()
+    return {r[0]: {"name_score": r[1], "last_seen": r[2], "sources": r[3]} for r in rows}
+
+
+def pending(conn: sqlite3.Connection, days: int, lane: str = "fast") -> int:
+    """Terms with no review in this window yet, due or not: the pool the cap samples."""
+    return conn.execute(
+        "SELECT count(*) FROM terms t WHERE COALESCE(t.status, 'new') != 'echo'"
+        " AND COALESCE(t.window, 'fast') = ?"
+        " AND NOT EXISTS (SELECT 1 FROM reviews r WHERE r.term_id = t.id AND r.days = ?)",
+        (lane, days)).fetchone()[0]
+
+
+def overdue(conn: sqlite3.Connection, today: date, days: int, lane: str = "fast") -> int:
+    """Terms that reached the window and are still unreviewed: the queue a cap has to keep up
+    with. It is the number that says the sample is falling behind, not the pool above."""
+    cutoff = (today - timedelta(days=days)).isoformat()
+    return conn.execute(
+        "SELECT count(*) FROM terms t WHERE first_seen <= ? AND COALESCE(t.status, 'new') != 'echo'"
+        " AND COALESCE(t.window, 'fast') = ?"
+        " AND NOT EXISTS (SELECT 1 FROM reviews r WHERE r.term_id = t.id AND r.days = ?)",
+        (cutoff, lane, days)).fetchone()[0]
+
+
+def next_due(conn: sqlite3.Connection, today: date, days: int, lane: str = "fast") -> date | None:
+    """The first future date a term reaches this window: what the report calls the next check."""
+    cutoff = (today - timedelta(days=days)).isoformat()
+    row = conn.execute(
+        "SELECT MIN(first_seen) FROM terms t WHERE first_seen > ? AND COALESCE(t.status, 'new') != 'echo'"
+        " AND COALESCE(t.window, 'fast') = ?"
+        " AND NOT EXISTS (SELECT 1 FROM reviews r WHERE r.term_id = t.id AND r.days = ?)",
+        (cutoff, lane, days)).fetchone()
+    return date.fromisoformat(row[0]) + timedelta(days=days) if row and row[0] else None
+
+
+def save_review(conn: sqlite3.Connection, term: str, days: int, checked_at: date, *,
+                name_real: int | None = None, persistence: int | None = None,
+                search_rise: int | None = None, lead_days: int | None = None,
+                metrics: dict | None = None, final: bool = False) -> None:
+    """One review row per term and window. Re-running a window replaces it whole: the newer
+    reading wins. `final` is the lane's last window, and moves the term to `watching`."""
     term_id = _term_id(conn, term)
     if term_id is None:
         return
-    day = (today or date.today()).isoformat()
-    metrics = json.dumps({**trends, "verdict": verdict}, ensure_ascii=False)
-    rise = {"hit": 1, "miss": 0}.get(verdict)
+    day = checked_at.isoformat() if isinstance(checked_at, date) else str(checked_at)
+    text = json.dumps(metrics or {}, ensure_ascii=False)
     found = conn.execute("SELECT id FROM reviews WHERE term_id = ? AND days = ?",
-                         (term_id, REVIEW_DAYS)).fetchone()
+                         (term_id, days)).fetchone()
     if found:
-        conn.execute("UPDATE reviews SET checked_at = ?, search_rise = ?, lead_days = ?, metrics = ?"
-                     " WHERE id = ?", (day, rise, lead_days, metrics, found[0]))
+        conn.execute("UPDATE reviews SET checked_at = ?, name_real = ?, persistence = ?, search_rise = ?,"
+                     " lead_days = ?, metrics = ? WHERE id = ?",
+                     (day, name_real, persistence, search_rise, lead_days, text, found[0]))
     else:
-        conn.execute("INSERT INTO reviews (term_id, days, checked_at, search_rise, lead_days, metrics)"
-                     " VALUES (?,?,?,?,?,?)", (term_id, REVIEW_DAYS, day, rise, lead_days, metrics))
-    conn.execute("UPDATE terms SET status = 'watching', updated_at = ? WHERE id = ?", (day, term_id))
+        conn.execute("INSERT INTO reviews (term_id, days, checked_at, name_real, persistence,"
+                     " search_rise, lead_days, metrics) VALUES (?,?,?,?,?,?,?,?)",
+                     (term_id, days, day, name_real, persistence, search_rise, lead_days, text))
+    if final:
+        conn.execute("UPDATE terms SET status = 'watching', updated_at = ? WHERE id = ?", (day, term_id))
     conn.commit()
 
 
@@ -334,27 +411,90 @@ def recent_sources(conn: sqlite3.Connection, today: date | None = None) -> list[
     return [r for r in out if {"x", "hf"} & set(r["kinds"])][:20]
 
 
-def summary(conn: sqlite3.Connection, today: date | None = None) -> dict:
-    since = ((today or date.today()) - timedelta(days=SUMMARY_WINDOW)).isoformat()
+def _window(conn: sqlite3.Connection, days: int, lane: str, since: str) -> dict:
+    """One window's by-signal table: checked rows, rises, real names, persistence and the lead."""
     rows = conn.execute(
-        "SELECT s.source, r.search_rise, r.lead_days FROM term_signals s"
+        "SELECT s.source, r.name_real, r.persistence, r.search_rise, r.lead_days FROM term_signals s"
         " JOIN terms t ON t.id = s.term_id"
         " JOIN reviews r ON r.term_id = t.id AND r.days = ?"
-        " WHERE r.checked_at >= ?", (REVIEW_DAYS, since)).fetchall()
+        " WHERE COALESCE(t.window, 'fast') = ? AND r.checked_at >= ?", (days, lane, since)).fetchall()
     by: dict[str, dict] = {}
-    for source, rise, lead in rows:
-        s = by.setdefault(source, {"checked": 0, "hit": 0, "leads": []})
+    for source, real, persistence, rise, lead in rows:
+        s = by.setdefault(source, {"checked": 0, "hit": 0, "real": 0, "scored": 0,
+                                   "again": 0, "seen": 0, "leads": []})
         s["checked"] += 1
+        if real is not None:                    # a slow word has no name score: not counted either way
+            s["scored"] += 1
+            s["real"] += 1 if real else 0
+        if persistence is not None:
+            s["seen"] += 1
+            s["again"] += 1 if persistence else 0
         if rise == 1:
             s["hit"] += 1
-            s["leads"].append(lead)
+            if lead is not None:
+                s["leads"].append(lead)
     for s in by.values():
         leads = s.pop("leads")
         s["median_lead"] = statistics.median(leads) if leads else None
-    pending = conn.execute("SELECT count(*) FROM terms t WHERE COALESCE(t.status, 'new') != 'echo'"
-                           " AND COALESCE(t.window, 'fast') != 'slow' AND NOT EXISTS (SELECT 1 FROM reviews r WHERE r.term_id = t.id AND r.days = ?)",
-                           (REVIEW_DAYS,)).fetchone()[0]
-    return {"by_signal": by, "pending": pending, "window_days": SUMMARY_WINDOW}
+    return by
+
+
+def summary(conn: sqlite3.Connection, today: date | None = None, windows: dict | None = None) -> dict:
+    """Per signal, per window and per lane over the last SUMMARY_WINDOW days, plus the queues
+    and the sitemap/new-site sample. `by_signal` stays the fast lane's final window."""
+    today = today or date.today()
+    windows = {lane: tuple(days) for lane, days in (windows or WINDOWS).items()}
+    since = (today - timedelta(days=SUMMARY_WINDOW)).isoformat()
+    by_lane = {lane: {str(d): _window(conn, d, lane, since) for d in days}
+               for lane, days in windows.items()}
+    fast_final = windows["fast"][-1]
+    slow_final = windows["slow"][-1]
+    fast_pending = pending(conn, fast_final, "fast")
+    return {"window_days": SUMMARY_WINDOW,
+            "sample_days": SAMPLE_WINDOW,
+            "by_signal": by_lane["fast"][str(fast_final)],
+            "windows": by_lane,
+            "pending": fast_pending,
+            "pending_windows": {"fast": {str(fast_final): fast_pending},
+                                "slow": {str(slow_final): pending(conn, slow_final, "slow")}},
+            "due_windows": {"fast": {str(fast_final): overdue(conn, today, fast_final, "fast")},
+                            "slow": {str(slow_final): overdue(conn, today, slow_final, "slow")}},
+            "samples": sample_summary(conn, today - timedelta(days=SAMPLE_WINDOW))}
+
+
+def echo_candidates(conn: sqlite3.Connection, n: int) -> list[dict]:
+    """Sitemap/new-site echoes never sampled before, oldest first: the precision sample."""
+    rows = conn.execute(
+        "SELECT t.id, t.canonical, t.first_seen, group_concat(s.source) FROM terms t"
+        " JOIN term_signals s ON s.term_id = t.id"
+        " WHERE COALESCE(t.status, 'new') = 'echo'"
+        " AND NOT EXISTS (SELECT 1 FROM samples x WHERE x.term_id = t.id)"
+        " GROUP BY t.id ORDER BY t.first_seen, t.canonical LIMIT ?", (n,)).fetchall()
+    return [{"term_id": r[0], "term": r[1], "first_seen": r[2],
+             "source": ",".join(sorted(set((r[3] or "").split(","))))} for r in rows]
+
+
+def save_sample(conn: sqlite3.Connection, term_id: int, source: str, sampled_at: date,
+                volume: int | None, volume_month: str, label: str) -> None:
+    """One labeled candidate: a month of searches is what "already exists" means here."""
+    day = sampled_at.isoformat() if isinstance(sampled_at, date) else str(sampled_at)
+    conn.execute("INSERT INTO samples (term_id, source, sampled_at, volume, volume_month, label)"
+                 " VALUES (?,?,?,?,?,?)", (term_id, source, day, volume, volume_month, label))
+    conn.commit()
+
+
+def sample_summary(conn: sqlite3.Connection, since: date) -> dict:
+    """{source: sampled / new / searched / unknown} since `since`, for the report's sample line."""
+    start = since.isoformat() if isinstance(since, date) else str(since)
+    rows = conn.execute("SELECT source, label, count(*) FROM samples WHERE sampled_at >= ?"
+                        " GROUP BY source, label", (start,)).fetchall()
+    out: dict[str, dict] = {}
+    for source, label, n in rows:
+        s = out.setdefault(source, {"sampled": 0, "new": 0, "searched": 0, "unknown": 0})
+        s["sampled"] += n
+        if label in s:
+            s[label] += n
+    return out
 
 
 def leads(conn: sqlite3.Connection, days: int = 7, today: date | None = None) -> list[dict]:

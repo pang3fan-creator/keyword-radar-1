@@ -31,6 +31,7 @@ radar/                 runtime code (upstream layout; keep it recognizable)
   ph.py                Product Hunt launches ranked by votes (free, needs PH_API_KEY)
   autocomplete.py      Google suggest, free: the slow lane's discovery
   slow.py              the weekly combo-word list, on the fast lane's own chain
+  precision.py         the sitemap/new-site name precision sample (one volume batch)
   terms.py             name/term extraction
   judge.py             LLM name judge
   entity.py            one term per thing: normalize, merge, canonical
@@ -39,8 +40,8 @@ radar/                 runtime code (upstream layout; keep it recognizable)
   leading.py           the plain rule that decides when a name has no size
   usecases.py          evidence -> generic terms -> keyword table
   competition.py       SERP / KD / DR page-one check
-  review.py            14-day Trends review
-  store.py             SQLite memory: terms / term_signals / reviews (leads is frozen)
+  review.py            multi-window review: 1d/3d free, 7d/14d, slow 14d/30d
+  store.py             SQLite memory: terms / term_signals / reviews / samples (leads is frozen)
   migrate.py           one-off: leads -> terms / term_signals / reviews / runs
   report.py            Markdown/JSON reports
   aisa.py, goanyapi.py paid data sources
@@ -77,9 +78,10 @@ Python 3.10 or newer. The runtime uses only the standard library. The project ve
 .venv/bin/python scripts/bench_check.py --dry-run    # monthly: check the basket, cache its daily size
 .venv/bin/python scripts/new_sites_probe.py           # one paid call ($0.13): what the whois query returns
 .venv/bin/python -m radar slow --out slow.md         # weekly: combo words; --free skips every paid step
+.venv/bin/python -m radar precision --n 10           # monthly: sitemap/new-site name precision sample (~$0.09)
 ```
 
-A full `daily` costs about **$0.34** and takes 10–15 minutes with the current 35 X accounts. `keywords` costs about $0.05 per name plus $0.09 per call. State the cost before a paid run, and do not run `daily` twice in a row (the second run reports only the delta).
+A full `daily` costs about **$0.34** (up to $0.38 once the paid review windows are due) and takes 10–15 minutes with the current 35 X accounts. `keywords` costs about $0.05 per name plus $0.09 per call. State the cost before a paid run, and do not run `daily` twice in a row (the second run reports only the delta).
 
 ## Environment and secrets
 
@@ -198,27 +200,24 @@ Still open after M3:
 - Only the six default feeds are verified; adding one is a config edit, not a code change. The 40-title fixture is one day's sample: a new feed or a fixed miss needs the fixture updated.
 - The keyword table's `新词?` column still reads the Trends baseline, not `first_seen` (from M2).
 - The benchmark cache is still refreshed by hand; the SQLite `keywords` table still has no writer.
-- `ph.name()` reads only the subtitle's first word, and `SUB` (the/for/with/...) drops it when it is a function word: "Notion: for your agents" would come back as `notion` alone. M4 left it as it was; M5 decides between shrinking `SUB` to the articles and a brand+feature pair.
-- PH name extraction has no negative fixture variants (a "by <maker>" suffix, a two-colon title); the 40-title fixture covers HN and the official feeds only.
+- `ph.name()` reads only the subtitle's first word, and `SUB` (the/for/with/...) drops it when it is a function word: "Notion: for your agents" would come back as `notion` alone (fixed in M5: `BLOCK` skips filler words and pairs the brand with the first content word, `notion agents`).
+- PH name extraction has no negative fixture variants (a "by <maker>" suffix, a two-colon title); the 40-title fixture covers HN and the official feeds only (fixed in M5: `tests/test_ph.py` pins those variants).
 
 M4 completed on 2026-10-17 (`058479a`, `70c5c47`):
 
 - `radar/autocomplete.py`: seeds = `slow.objects` (20) x `slow.actions` (8); any list fits. One free request per seed to Google's suggest endpoint. A candidate must carry the seed's category word (a plural counts), have 2-6 words, not open with a question word, and not be a `known_terms` entry. A failed seed is a line; a malformed answer is an error, not an empty list. The first run read 160 seeds into 855 candidates.
 - `radar/slow.py`: deals the volume cap across categories (`spread`), then walks the fast lane's own chain -- `usecases.volumes`, `solo_series`, `measure`, `competition.assess` -- and balances the table (<=8 per category, <=3 near-copies).
 - The weekly run is its own command and report (`slow.md` + `slow.json`); `daily` never calls it. Slow rows are `terms.window='slow'`, which finally reads the column M1 created: no visible name slot (`select.SLOW`), no five-name read (`READ_KINDS`), no 14-day review (`due()` and `summary()` exclude them). A slow word a fast signal later names flips to `window='fast'` and becomes reviewable.
-- First real run: 160 seeds, 855 candidates, 30 rows, **$0.349**, 7m20s, no paid errors; the strongest row was `ai tattoo generator` (14,800/mo, rising, KD 26, 329 pages). The volume batch bills per keyword, so 250 words carried the cost: the caps are now 120 volumes / 25 shapes / 5 page-one, and the report prints volumes / Trends / page-one spend separately so the next run proves the estimate.
+- First real run: 160 seeds, 855 candidates, 30 rows, **$0.349**, 7m20s, no paid errors; the strongest row was `ai tattoo generator` (14,800/mo, rising, KD 26, 329 pages). The volume batch has a base charge and grows with the word count (M5 measured $0.09 for ten words; 250 words printed about $0.24), so the caps are now 120 volumes / 25 shapes / 5 page-one, and the report prints volumes / Trends / page-one spend separately so the next run proves the estimate.
 - Only the visible rows (<=30) are stored, not the 855 candidates; the JSON keeps the run.
 - Tests: autocomplete parse/filter/cap/failure, the shared chain and the store write, the category deal, the review exclusion and the fast-signal promotion, the report's failure, caps and spend lines.
 
 Still open after M4:
 
 - Trends Rising as a **discovery** channel: M4 uses Trends only for the shape.
-- Slow words get their 14d/30d review windows in M5; today they are stored and shown, not reviewed.
 - The weekly run is manual; no scheduler in v1, and `sources` does not run the slow lane.
 - The seed list is 20 x 8; the 115 roots and 63 seeds are not in the repository, so a different list is a config edit.
 - The tuned weekly cost (~$0.19) is an estimate until the next paid run prints its split.
-- `merge_terms()` does not carry `window`: a fast twin folded into an older slow row keeps `slow` and leaves the review pool. No such merge has happened yet; fix it in M5 (one line: `fast` if either side is fast).
-- `ph.name()`'s subtitle edge was left as it was; M5 decides it.
 
 ## Before you hand work over
 

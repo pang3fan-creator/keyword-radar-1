@@ -7,8 +7,9 @@ ordered by votes; a post below `ph.min_votes` is not a launch worth reading, and
 marked seen, so one that climbs later is still new.
 
 A product is reported once (state/ph_seen.json.gz). The name is the post's name before its
-subtitle ("Notion: Context for your agents" -> `notion`) and before " by <maker>"; the
-tagline is what the name judge reads. A maker alone relaunching is not a new name.
+subtitle and the first word after the colon that is not filler ("Notion: Context for your
+agents" -> `notion context`), and before " by <maker>"; the tagline is what the name judge
+reads. A maker alone relaunching is not a new name.
 """
 from __future__ import annotations
 
@@ -33,18 +34,29 @@ QUERY = """query ($after: DateTime!, $topic: String!) {
 }""" % READ_MAX
 
 
-SUB = {"the", "a", "an", "your", "our", "how", "why", "what", "now", "for", "with"}
+# Words that introduce a tagline instead of naming its feature: "Notion: for your agents",
+# "Notion: The agents", "Notion: Introducing Agents". The scan stops after PAIR_WORDS, so a
+# sentence ("Linear: How we built the issue tracker") keeps the brand alone.
+BLOCK = {"the", "a", "an", "for", "with", "your", "our", "how", "why", "what", "when", "now",
+         "new", "introducing", "introduce", "launching", "launch", "released", "release",
+         "we", "i", "you", "it", "they", "is", "are", "was", "were", "built", "build", "made", "make"}
+PAIR_WORDS = 3
 
 
 def name(raw: str) -> str:
     """'Notion: Context for your agents' -> 'notion context' (the feature, not the decade-old
-    brand); 'GPU Terminal by Context.dev' -> 'gpu terminal'."""
-    parts = [p.strip() for p in raw.split(":")]
+    brand); 'Notion: for your agents' -> 'notion agents'; 'GPU Terminal by Context.dev' ->
+    'gpu terminal'. Only a one-word brand is paired, and only with the first word after the
+    colon that is not filler: 'Foo: Bar: Baz' stays 'foo bar'."""
+    parts = [p.strip() for p in raw.split(":") if p.strip()]
+    if not parts:
+        return ""
     head = parts[0]
-    if len(parts) > 1:
-        following = parts[1].split()
-        if len(head.split()) == 1 and following and following[0].lower() not in SUB:
-            head = f"{head} {following[0]}"       # the part before ':' alone is usually a brand
+    if len(parts) > 1 and len(head.split()) == 1:
+        for word in parts[1].split()[:PAIR_WORDS]:
+            if word.lower().strip(",.") not in BLOCK:
+                head = f"{head} {word}"       # the part before ':' alone is usually a brand
+                break
     text = re.split(r"\s+by\s+", head)[0]
     return " ".join(text.lower().split())
 
