@@ -24,7 +24,7 @@
 
 ## 图
 
-`make_diagram/` 是上游的流程图脚本和 GIF。图只画到上游 0.4 版；本项目的 ⑧ 官方、⑨ HN、⑩ Product Hunt、慢线和多窗口复盘没有画进去。重画需要 `rsvg-convert` 和 `ffmpeg`。
+`make_diagram/` 是上游的流程图脚本和 GIF。图只画到上游 0.4 版；本项目的 ⑧ 官方、⑨ HN、⑩ Product Hunt、慢线和多窗口复盘没有画进去。README 不再引用它；重画需要 `rsvg-convert` 和 `ffmpeg`。
 
 ## 约定
 
