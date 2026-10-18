@@ -238,6 +238,8 @@ Still open after M5:
 - The 24 slow words are mostly the migrated generic phrases; their 30d outcome measures the keyword-table reflux, not M4's combo words.
 - The slow 30d series is 61 days; whether the endpoint returns that span is unproven until 2026-11-14.
 - Trends Rising as discovery, a scheduler, `sources` for hn/official/ph/slow, MCP tools for slow/precision, the hand-run benchmark refresh, the `keywords` table writer and the `新词?` column are unchanged from earlier sections.
+- PI review follow-up: `_free` has no cap, so at a few hundred new terms a day the 1d/3d rows grow by hundreds a day (free, but the table grows); the report prints counts and the JSON keeps the detail. Revisit with a cap only when it actually grows.
+- PI review follow-up: `name_real` reads the stored score at check time and `record()` can re-score the term later, so a 1d row answers "does it still stand at the check", not "was it a name on day one". Nail the definition down with the 50-name human spot check (M6).
 
 ## Before you hand work over
 
