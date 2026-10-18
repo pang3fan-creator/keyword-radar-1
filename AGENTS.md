@@ -219,6 +219,26 @@ Still open after M4:
 - The seed list is 20 x 8; the 115 roots and 63 seeds are not in the repository, so a different list is a config edit.
 - The tuned weekly cost (~$0.19) is an estimate until the next paid run prints its split.
 
+M5 completed on 2026-10-18 (`67a57e1`):
+
+- `radar/review.py`: windows come from `review.windows` (fast 1/3/7/14, slow 14/30). 1d/3d are local and free: `name_real` is the judge's strong bar (`review.name_real_score`, 0.80) and `persistence` is `last_seen > first_seen`; the row keeps `age_days`, so a window read late says so in the report. 7d/14d (and slow 14d/30d) are one Trends series per lane read at the final check, each horizon cut at `first_seen + days`: a late 7d row still says what happened in the first week, and two windows never pay twice.
+- `save_review()` replaces `save_verdict()`: one row per term and window, `name_real` / `persistence` / `search_rise` separate, the old mixed verdict only inside `metrics`. The 14d/30d rows are `final` and move the term to `watching`.
+- A failed Trends batch is an error line for that lane (the other lane still runs) and the terms stay due; a term missing one variant answer stays due too. Both reach `runs.errors` and the report's ⑤ section.
+- `radar/precision.py` + `radar precision --n 10`: samples unsampled `status='echo'` terms, one Google Ads batch, labels `new` / `searched` (>= `review.sampling.existing_volume`, 1000/mo) / `unknown`, writes `samples`; the report and `leads` aggregate the last 90 days.
+- `merge_terms()` carries `window` (fast if either side is fast). `ph.name()` pairs a one-word brand with the first non-filler word after the colon ("Notion: for your agents" -> `notion agents`); tests pin the `by <maker>` suffix, a two-colon title, articles and launch verbs.
+- Validation (2026-10-18): daily **$0.395** (`runs` #5, 09:59:28, no errors), 20 leads stored, the review part $0 (no paid window due): **44 rows at 1d, 13 at 3d**; 30 of the 1d names passed the strong bar, 14 did not. Terms after the run: 108 (84 fast, 24 slow). `radar precision --n 10` cost **$0.090** (`runs` #6) and labeled 7 new / 3 already searched (aws 368k, bitbucket 33.1k, engram 12.1k), 0 unknown.
+- First paid rows: fast 7d/14d on **2026-10-29** (the 10-15 terms reach 14 days), slow 14d/30d on **2026-11-14**. Until then the report says "nothing in Trends (the first check is due ...)".
+- Cost correction: the precision run cost $0.090, not the ~$0.01 in the plan: the volume lookup has a fixed base charge. The M4 note above is corrected the same way.
+
+Still open after M5:
+
+- `name_real` is the judge's strong bar, not a human label, and `precision` is a volume threshold, not "is this an existing product". A human spot check (50 names) is still open.
+- The review is a sample: `per_day` 5 per lane against about 20 new names a day, so `due` will grow; the report prints waiting and due per lane.
+- The 7d/14d rows arrive with the final check by design (there is no early 7d request), and a term that never reaches 14 days is never checked.
+- The 24 slow words are mostly the migrated generic phrases; their 30d outcome measures the keyword-table reflux, not M4's combo words.
+- The slow 30d series is 61 days; whether the endpoint returns that span is unproven until 2026-11-14.
+- Trends Rising as discovery, a scheduler, `sources` for hn/official/ph/slow, MCP tools for slow/precision, the hand-run benchmark refresh, the `keywords` table writer and the `新词?` column are unchanged from earlier sections.
+
 ## Before you hand work over
 
 Three review rounds found the same class of miss: the handover said "done" and the repository said otherwise. Run this list first, and answer each line in the handover message.
