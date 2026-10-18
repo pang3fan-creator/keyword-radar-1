@@ -1,9 +1,8 @@
-"""The radar's flow as an animated SVG and a GIF: dots travel the connectors.
+"""The radar's flow as an animated GIF: dots travel the connectors.
 
-  python docs/make_diagram/make_diagram.py <oss-zh|oss-en> <out-basename> [--plain]
+  python docs/make_diagram/make_diagram.py <out-basename>
 
-What 0.3 and 0.4 added is drawn in purple, with a NEW tag; --plain draws it like the rest.
-rsvg-convert renders each frame (it does not run SVG animation) and ffmpeg joins them.
+Writes <out-basename>.gif only. rsvg-convert renders each frame and ffmpeg joins them.
 """
 import math, subprocess, sys, tempfile
 from pathlib import Path
@@ -42,29 +41,6 @@ ZH = {
     "tag": "新增",
     "legend": ("信号与取证", "报告产出", "新词表", "后加（M3–M5）", "复盘结果进日报"),
 }
-EN = {
-    "s1": ("① X and HF", "per run", "trending HF Spaces"), "s2": ("② GitHub", "breakout repos"),
-    "s3": ("③ sitemaps", "new pages · new sites", "8 tool directories"), "s4": ("④ Search Console", "optional"),
-    "s6": ("⑥ revenue · ⑦ asks", "TrustMRR · Reddit", "weekly"),
-    "s7": ("⑧⑨⑩ official", "HN · Product Hunt", "daily"),
-    "slow": ("Slow lane (weekly)", "Google suggest → combos"),
-    "judge": ("Name judge: a name, or a word?", "0.5 names it · 0.8 reads it", "format/⚡ marks"),
-    "known": ("Drop the terms you already cover",),
-    "sources": ("Sources report (sources)", "X + HF · only on a new name"),
-    "table": ("Keyword table: names + generic terms", "evidence → phrases → screen → volume → Trends → page one"),
-    "page": ("Page one", "weak sites · KD · ads · pages built · advertisers", "a crowded \"prioritize\" becomes \"watch ↓\""),
-    "evidence": ("Evidence (AIsa)", "top posts · README", "a paying product's own words"),
-    "goany": ("GoAnyAPI (optional)", "related queries · US curve", CREDIT_SOURCE),
-    "daily": ("Daily report (once a day)", "table + leads + review", "leads in radar.db", "+precision section"),
-    "review": ("Review: fast 1/3/7/14 · slow 14/30", "1/3 free · 7/14/30 Trends", "hit rate in the daily"),
-    "credit": f"Idea: {CREDIT_TABLE}",
-    "use_h": "Three interfaces + slow weekly",
-    "use": [("Command line", "daily · sources", "keywords · leads"), ("MCP server", "leads · keyword table", "run"),
-            ("Slow lane weekly", "slow · combos", "--free lists them"), ("pains command", "Chrome reviews", "Reddit · tutorials")],
-    "tag": "NEW",
-    "legend": ("signals · evidence", "reports", "keyword table", "added M3–M5", "review in the daily"),
-}
-VARIANTS = {"oss-zh": ZH, "oss-en": EN}
 
 
 def width(text, size):   # a CJK glyph is about a square, a Latin one about half
@@ -180,17 +156,13 @@ def at(points, f):
     return points[-1]
 
 
-def main(variant, base, marks=True):
-    head, body = scene(VARIANTS[variant], marks)
-    colour = lambda c, new: c if marks or not new else "#888780"  # noqa: E731
-    smil = "\n".join(f'<circle r="{4.5 if new and marks else 4}" fill="{colour(c, new)}"><animateMotion dur="{dur}s" repeatCount="indefinite" '
-                     f'begin="{b}s"><mpath href="#{i}"/></animateMotion></circle>' for i, _, c, _, new, dur, b in PATHS)
-    Path(base + ".svg").write_text(head + body + smil + "\n</svg>\n")
+def main(base):
+    head, body = scene(ZH, True)
     fps, seconds = 15, 4.8
     with tempfile.TemporaryDirectory() as tmp:
         for n in range(int(fps * seconds)):
             tm = n / fps
-            dots = "".join(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="{4.5 if new and marks else 4}" fill="{colour(c, new)}"/>'
+            dots = "".join(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="{4.5 if new else 4}" fill="{c}"/>'
                            for _, p, c, _, new, dur, b in PATHS for x, y in [at(p, ((tm - b) % dur) / dur)])
             f = Path(tmp) / f"f{n:03d}.svg"
             f.write_text(head.replace("context-stroke", "#888780") + body + dots + "\n</svg>\n")
@@ -198,8 +170,7 @@ def main(variant, base, marks=True):
         frames = ["-y", "-loglevel", "error", "-framerate", str(fps), "-i", f"{tmp}/f%03d.png"]
         subprocess.run(["ffmpeg", *frames, "-vf", "scale=1140:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=96[p];[b][p]paletteuse=dither=none",
                         base + ".gif"], check=True)
-        subprocess.run(["cp", f"{tmp}/f030.png", base + ".png"], check=True)
 
 
 if __name__ == "__main__":
-    main(sys.argv[1], sys.argv[2], marks="--plain" not in sys.argv)
+    main(sys.argv[1])

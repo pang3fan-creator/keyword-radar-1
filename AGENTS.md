@@ -47,7 +47,7 @@ radar/                 runtime code (upstream layout; keep it recognizable)
   aisa.py, goanyapi.py paid data sources
 tests/                 pytest suite; no network, no paid calls
 docs/                  docs index; Roadmap/ (00-06: constraints, research, methodology, scope); 里程碑.md
-docs/make_diagram/     the flow diagram script and GIFs (upstream)
+docs/make_diagram/     the flow diagram script and radar.zh.gif
 scripts/               one-off utilities (e.g. migration)
 config.json            local config (gitignored)
 config.example.json    tracked template
