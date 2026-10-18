@@ -300,7 +300,7 @@ pip install "new-term-radar[mcp] @ git+https://github.com/pang3fan-creator/keywo
 | `keyword_table` | 你给的名字的新词表 | 每个名字约 $0.05，每次调用另加 $0.09；每个名字 40 到 90 秒 |
 | `run_radar` | 跑一次 `sources` 或 `daily`，返回报告 | 付费，要几分钟。只适合第一次试用，定时运行应该交给 cron 或 Actions |
 
-把 `RADAR_STATE` 指向定时任务写入的那个目录，`recent_leads` 看到的就是定时任务记下的线索。同样的两个功能在命令行里也有：`python -m radar keywords "名字" …` 和 `python -m radar leads`。
+把 `RADAR_STATE` 指向定时任务写入的那个目录，`recent_leads` 看到的就是定时任务记下的线索；前提是定时任务和 MCP 服务器在同一台机器上。GitHub Actions 的缓存不在本机，本地 MCP 看不到它；要读 Actions 的结果，把 `report.json` 或 `radar-state` artifact 取回来。同样的两个功能在命令行里也有：`python -m radar keywords "名字" …` 和 `python -m radar leads`。
 
 ## 在 GitHub Actions 上跑
 

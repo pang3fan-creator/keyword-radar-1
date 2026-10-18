@@ -11,8 +11,8 @@ Three tools:
                  meant for a first try, the schedule belongs in cron or GitHub Actions.
 
 Where it looks: RADAR_CONFIG (default ./config.json) and RADAR_STATE (default ./state), the
-same files the command line uses, so the server sees what the scheduled runs kept. Keys come
-from the environment: AISA_API_KEY, and optionally GOANYAPI_API_KEY.
+same files the command line uses, so the server sees what the scheduled runs kept on this
+machine. Keys come from the environment: AISA_API_KEY, and optionally GOANYAPI_API_KEY.
 
 The transport is stdio, so nothing here may print to stdout: the tools run the radar with
 its output captured.
@@ -92,8 +92,9 @@ def _run(command: str, skip: list[str]) -> dict:
 @server.tool()
 async def run_radar(command: str = "sources", skip: list[str] | None = None) -> dict:
     """Run the radar once and return its report. command: "sources" (X and Hugging Face only;
-    no report when nothing is new) or "daily" (every signal, the keyword table, the 14-day
-    review). skip: any of x, hf, breakout, sitemaps, newsites, gsc, review, judge, usecases.
+    no report when nothing is new) or "daily" (every signal, the keyword table and the review
+    windows that are due). skip: any of x, hf, breakout, sitemaps, newsites, revenue, asks, gsc,
+    review, judge, usecases, tutorials, hn, official, ph.
 
     Paid and slow: `sources` reads every X account in config.json (about 10 seconds and $0.003
     each); `daily` takes 5 to 15 minutes. It updates the same state the scheduled runs use, so
