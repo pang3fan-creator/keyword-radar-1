@@ -74,6 +74,7 @@ T = {
                   "⚡ = a post with 1,000+ likes walks through a manual workflow or rides a trend: a one-click tool nobody has built yet. Read the posts before acting on a tag.",
                   "🎬 视频 · 🎙 语音 · 🖼 图片:它产出什么,一般用户愿意付费的顺序是 视频 > 语音 > 图片 > 文字。"
                   "⚡ = 有 1,000 赞以上的帖子在手把手讲一套手动流程,或在跟一个热梗:还没人做成一键工具。按标签行动前先读原帖。"),
+    "echo_tag": (" · URL echo", " · 页面回声"),
     "leads_cols": ("| Term | Signals | Name score | Known | Search variants | Examples |", "| 词 | 信号 | 名字得分 | 已覆盖 | 搜索变体 | 例子 |"),
     "none": ("none", "无"), "dash": ("—", "—"),
     "other_terms": ("Other rising terms (judged common words): ", "其他上升词(判为普通词):"),
@@ -89,6 +90,7 @@ T = {
                    "### ② 单仓库爆发(近 {days} 天新建,按每天涨星排;🆕 = 今天第一次达标)"),
     "breakout_cols": ("| Repo | ★ | Per day | Since yesterday | Age (days) | About |", "| 仓库 | ★ | 均/天 | 比昨天 | 天数 | 简介 |"),
     "no_breakouts": ("no breakout repos", "没有爆发仓库"), "skipped": ("skipped", "跳过"),
+    "skipped_weekly": ("skipped (weekly)", "跳过(周更)"),
     "newsite_h": ("### ③ New sites (registered and first indexed in the last {days} days, est. visits/mo >{etv}, ≥{kw} ranking keywords; 🆕 = first seen)",
                   "### ③ 新站(近 {days} 天注册且首次被收录、月访问估值 >{etv}、排名词 ≥{kw};🆕 = 第一次出现)"),
     "newsite_cols": ("| Domain | Registered | First indexed | Visits/mo (est.) | Ranking keywords |", "| 域名 | 注册 | 首次收录 | 访问/月(估) | 排名词 |"),

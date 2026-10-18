@@ -1127,6 +1127,21 @@ def test_the_report_says_when_one_signal_took_every_visible_slot():
     assert any("holds 20/20" in line for line in lines), lines
 
 
+def test_a_weekly_signal_that_did_not_run_is_not_silent():
+    blocks = {k: {"skipped": True} for k in ("x", "hf", "breakout", "sitemap")}
+    text = "\n".join(report._status_lines(blocks, {}, []))
+
+    assert "⑥" in text and "⑦" in text, text
+
+
+def test_a_sitemap_only_lead_is_marked_as_an_echo():
+    echo = {"kinds": ["sitemap"], "signals": ["③ sitemaps: 9 mentions"]}
+    named = {"kinds": ["x", "sitemap"], "signals": ["X: 2 accounts"]}
+
+    assert report._signals_cell(echo) == "③ sitemaps: 9 mentions" + i18n.t("echo_tag")
+    assert report._signals_cell(named) == "X: 2 accounts"
+
+
 def test_the_keyword_header_and_its_separator_agree_in_every_language():
     for lang in ("en", "zh"):
         i18n.set_lang(lang)

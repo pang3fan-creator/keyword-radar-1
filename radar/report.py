@@ -62,6 +62,12 @@ def _marks(r: dict) -> str:
     return MARK.get(r.get("format", "text"), "") + (" ⚡" if r.get("one_click") else "")
 
 
+def _signals_cell(r: dict) -> str:
+    """The signal cell. A lead only URL listings found is an echo of a name, not a new one."""
+    kinds = set(r.get("kinds") or [])
+    return "; ".join(r.get("signals") or []) + (t("echo_tag") if kinds and kinds <= select.URL_KINDS else "")
+
+
 def _cell(text: str) -> str:
     return text.replace("|", "/").replace("\n", " ")
 
@@ -372,14 +378,18 @@ def _status_lines(b: dict[str, dict], extra: dict[str, dict], lead: list[dict]) 
     ok = "" if bo.get("error") or bo.get("skipped") else t("st_breakout_ok", n=bo["searched"]) + \
         (t("st_breakout_first") if bo.get("first_run") else "")
     lines.append(t("st_breakout", state=_state(bo, ok)))
-    ak = b.get("ask", {"skipped": True})
-    if not ak.get("skipped"):
-        lines.append(t("st_asks", state=_state(ak, "" if ak.get("error") else t("st_asks_ok", read=ak["read"], asks=ak["asks"]))))
     rv = b.get("revenue", {"skipped": True})
-    if not rv.get("skipped") or rv.get("no_key"):
+    if rv.get("skipped") and not rv.get("no_key"):
+        lines.append(t("st_revenue", state=t("skipped_weekly")))
+    else:
         ok = t("revenue_nokey_short") if rv.get("no_key") else "" if rv.get("error") else t("st_revenue_ok", n=rv["read"]) + \
             (t("st_first") if rv.get("first_run") else "")
         lines.append(t("st_revenue", state=_state(rv, ok) if not rv.get("no_key") else ok))
+    ak = b.get("ask", {"skipped": True})
+    if ak.get("skipped"):
+        lines.append(t("st_asks", state=t("skipped_weekly")))
+    else:
+        lines.append(t("st_asks", state=_state(ak, "" if ak.get("error") else t("st_asks_ok", read=ak["read"], asks=ak["asks"]))))
     for site, s in sm.get("sites", {}).items():
         state = s.get("error") or (t("st_site_first") if s.get("first_run") else t("st_site_ok", urls=s["urls"], new=s["new"]))
         lines.append(t("st_site", site=site, state=state))
@@ -404,7 +414,7 @@ def daily(cfg: dict, lead: list[dict], b: dict[str, dict], gsc: dict, rev: dict,
     names_ = named(cfg, lead)
     for r in names_[:SHOWN]:
         ex = _cell(" / ".join(e[:50] for e in r["examples"][:2]))
-        lines.append(f"| **{r['term']}**{_marks(r)} | {'; '.join(r['signals'])} | {_score(r)} | {r['known'] or t('none')} | "
+        lines.append(f"| **{r['term']}**{_marks(r)} | {_signals_cell(r)} | {_score(r)} | {r['known'] or t('none')} | "
                      f"{', '.join(r['variants'][1:]) or t('dash')} | {ex} |")
     if any(_marks(r) for r in names_[:SHOWN]):
         lines += ["", t("tags_note")]

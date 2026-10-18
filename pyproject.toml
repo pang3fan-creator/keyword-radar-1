@@ -40,3 +40,7 @@ packages = ["new_term_radar"]
 
 [tool.setuptools.package-dir]
 new_term_radar = "radar"
+
+# Only this project's tests: gitignore/ holds reference clones with their own test files.
+[tool.pytest.ini_options]
+testpaths = ["tests"]
