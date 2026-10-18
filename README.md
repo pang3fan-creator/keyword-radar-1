@@ -31,6 +31,10 @@
 
 一句话：**信号找名字 → 模型判名字 → 配额选名字 → 读名字、提通用词 → 数据定价 → 复盘校准。**
 
+![雷达的机制：①–⑩ 信号 → 名字判断 → 配额 → 新词表 → 日报 → 复盘；慢线每周单独跑；紫色是后加的 ⑧⑨⑩、慢线和月度精度](docs/make_diagram/radar.zh.gif)
+
+图是 2026-10-18 按当前代码重画的：紫色是 0.4 之后加的（⑧⑨⑩、慢线、精度段），灰色虚线是复盘结果回到日报。下面是同一流程的文字版。
+
 ```
 ① X   ① HF   ② GitHub   ③ sitemap   ③ 新站   ④ GSC
 ⑥ 收入   ⑦ 求助   ⑧ 官方   ⑨ HN   ⑩ PH
@@ -432,7 +436,7 @@ python -m pytest -q tests
 - [饭特稀 | Fentix @fantexi997](https://x.com/fantexi997)：[GoAnyAPI](https://goanyapi.com)，相关查询和单个国家 Trends 走势这个可选数据源。
 - [Jason Zhu](https://github.com/zhuyansen)：上游 [new-term-radar](https://github.com/zhuyansen/new-term-radar)，本项目的起点。
 
-上游 0.4 版的动画流程图源码还在 `docs/make_diagram/`（画的是旧结构：只有 6 个信号、没有慢线/精度、复盘写 14 天、还画着已删除的 3 个 Agent Skill；README 不再引用）。
+流程图由 `docs/make_diagram/make_diagram.py` 生成（2026-10-18 按当前代码重画；需要 `rsvg-convert` 和 `ffmpeg`）。
 
 ### 许可
 
