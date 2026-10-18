@@ -1,6 +1,6 @@
 """The radar's flow as an animated SVG and a GIF: dots travel the connectors.
 
-  python docs/make_diagram.py <oss-zh|oss-en> <out-basename> [--plain]
+  python docs/make_diagram/make_diagram.py <oss-zh|oss-en> <out-basename> [--plain]
 
 What 0.3 and 0.4 added is drawn in purple, with a NEW tag; --plain draws it like the rest.
 rsvg-convert renders each frame (it does not run SVG animation) and ffmpeg joins them.
