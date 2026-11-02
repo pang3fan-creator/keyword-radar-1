@@ -92,13 +92,13 @@ def _run(command: str, skip: list[str]) -> dict:
 @server.tool()
 async def run_radar(command: str = "sources", skip: list[str] | None = None) -> dict:
     """Run the radar once and return its report. command: "sources" (X and Hugging Face only;
-    no report when nothing is new) or "daily" (every signal, the keyword table and the review
-    windows that are due). skip: any of x, hf, breakout, sitemaps, newsites, revenue, asks, gsc,
-    review, judge, usecases, tutorials, hn, official, ph.
+    the old signal, no report when nothing is new) or "daily" (the four-source delivery: X,
+    TikTok, Product Hunt, Reddit; one keyword per line, written to reports/<date>.md).
+    skip: any of x, tiktok, ph, asks.
 
-    Paid and slow: `sources` reads every X account in config.json (about 10 seconds and $0.003
-    each); `daily` takes 5 to 15 minutes. It updates the same state the scheduled runs use, so
-    do not call it as a substitute for the schedule."""
+    Paid: `daily` costs about $0.22 (TikTok's snapshot is $0.15 of it) and takes 1 to 3 minutes;
+    `sources` reads every X account in config.json. It updates the same state as a manual run,
+    so do not call it as a substitute for the daily run."""
     if command not in ("sources", "daily"):
         raise ValueError('command must be "sources" or "daily"')
     return await asyncio.to_thread(_run, command, skip or [])

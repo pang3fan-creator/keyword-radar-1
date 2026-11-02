@@ -101,9 +101,12 @@ def ph(cfg: dict, state: Path, now: datetime | None = None) -> dict:
         seen[node["id"]] = today
         if term in entity.MAKERS and not any(ch.isdigit() for ch in term):
             continue        # "OpenAI" is a company, not this week's new name
-        row = rows.setdefault(term, {"term": term, "recent": 0, "votes": 0, "examples": [], "note": ""})
+        row = rows.setdefault(term, {"term": term, "recent": 0, "votes": 0, "examples": [], "note": "",
+                                      "url": node.get("url") or ""})
         row["recent"] += 1
         row["votes"] = max(row["votes"], int(node.get("votesCount") or 0))
+        if not row["url"]:
+            row["url"] = node.get("url") or ""
         if node.get("tagline"):
             row["examples"].append(node["tagline"])
     for row in rows.values():

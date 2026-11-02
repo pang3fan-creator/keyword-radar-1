@@ -2,7 +2,9 @@ import copy
 
 import pytest
 
-from radar import aisa, autocomplete, config, goanyapi, hn, i18n, official
+import urllib.request
+
+from radar import aisa, autocomplete, config, goanyapi, hn, i18n, official, tiktok
 
 
 @pytest.fixture(autouse=True)
@@ -11,6 +13,7 @@ def english(monkeypatch):
     i18n.set_lang("en")
     monkeypatch.delenv("GOANYAPI_API_KEY", raising=False)   # the optional source is off unless a test turns it on
     monkeypatch.delenv("PH_API_KEY", raising=False)        # Product Hunt is off unless a test turns it on
+    monkeypatch.delenv("APIFY_TOKEN", raising=False)       # billed per row: a key on the machine must not leak into a test
 
     def no_network(*a, **k):
         raise goanyapi.GoAnyError("no network in tests")
@@ -21,6 +24,7 @@ def english(monkeypatch):
     monkeypatch.setattr(hn, "_get", no_free_fetch)
     monkeypatch.setattr(official, "_get", no_free_fetch)
     monkeypatch.setattr(autocomplete, "_get", no_free_fetch)
+    monkeypatch.setattr(tiktok, "_open", no_free_fetch)     # Apify bills per row; never in a test
 
     def no_paid_calls(*a, **k):       # a key on the machine must never turn a test into a paid call
         raise aisa.AisaError("no network in tests")

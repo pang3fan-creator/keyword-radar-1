@@ -113,6 +113,17 @@ CREATE TABLE IF NOT EXISTS samples (
   volume_month  TEXT,
   label         TEXT
 );
+CREATE TABLE IF NOT EXISTS deliveries (
+  id            INTEGER PRIMARY KEY,
+  day           TEXT NOT NULL,
+  term          TEXT NOT NULL,
+  source        TEXT NOT NULL,
+  kind          TEXT,
+  keyword       TEXT,
+  run_id        INTEGER,
+  payload       TEXT DEFAULT '{}'
+);
+CREATE INDEX IF NOT EXISTS deliveries_day ON deliveries(day);
 CREATE TABLE IF NOT EXISTS runs (
   id            INTEGER PRIMARY KEY,
   command       TEXT NOT NULL,
@@ -514,3 +525,26 @@ def leads(conn: sqlite3.Connection, days: int = 7, today: date | None = None) ->
              "verdict": json.loads(metrics or "{}").get("verdict"), "days_ahead": ahead,
              "new": f == day}                     # new by when we first saw it, not by a Trends baseline
             for tid, term, f, l, kinds, named, aliases, metrics, ahead in rows]
+
+
+def save_deliveries(conn: sqlite3.Connection, rows: list[dict], run_id: int | None = None) -> None:
+    """One row per delivered keyword. The payload keeps every field the report showed, so a
+    later question ("what did we ship on 11-05?") is a query, not a re-run."""
+    for row in rows:
+        conn.execute("INSERT INTO deliveries (day, term, source, kind, keyword, run_id, payload)"
+                     " VALUES (?,?,?,?,?,?,?)",
+                     (row.get("day"), row.get("term"), row.get("source"), row.get("kind"),
+                      row.get("keyword"), run_id, json.dumps(row, ensure_ascii=False)))
+    conn.commit()
+
+
+def deliveries(conn: sqlite3.Connection, days: int = 7, today: date | None = None,
+               include_today: bool = False) -> list[dict]:
+    """Delivered rows of the last `days` days, newest first. The report's "shown before"
+    list leaves today out; the CLI history wants it in."""
+    day = today or date.today()
+    since = (day - timedelta(days=days)).isoformat()
+    until = day.isoformat() if include_today else (day - timedelta(days=1)).isoformat()
+    rows = conn.execute("SELECT payload FROM deliveries WHERE day >= ? AND day <= ? ORDER BY day DESC, id",
+                        (since, until)).fetchall()
+    return [json.loads(payload) for (payload,) in rows]

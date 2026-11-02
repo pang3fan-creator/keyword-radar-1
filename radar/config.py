@@ -64,6 +64,10 @@ DEFAULTS = {
               "reddit_queries": ["{k} alternative", "{k} frustrating", '"{k}" "doesn\'t work"', "{k} wish there was"]},
     "tutorials": {"max_leads": 3, "videos": 3, "model": "gpt-4.1-mini"},
     "gsc": {},
+    # The delivery (07 §5-§7): four sources, one keyword per line, two gates.
+    "tiktok": {"countries": ["US"], "charts": ["popular", "viral"], "max_rows": 25, "top": 40},
+    "deliver": {"per_source": 3, "max_serp": 5, "max_items": 10, "location_code": 2840,
+                "dedupe_days": 7, "model": "gpt-4.1-mini", "llm_micros": 3000},
 }
 
 

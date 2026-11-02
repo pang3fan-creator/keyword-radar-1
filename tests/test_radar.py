@@ -399,30 +399,59 @@ def test_sources_run_reports_and_keeps_a_new_name(tmp_path, monkeypatch):
     assert store.connect(state).execute("SELECT canonical FROM terms").fetchall() == [("qwen3.9",)]
 
 
-def test_daily_run_writes_a_report_when_every_signal_is_down(tmp_path, monkeypatch):
-    def down(*a, **k):
-        raise OSError("network is down")
-    for mod, fn in ((cli.sources, "x_new"), (cli.sources, "hf_new"), (cli.breakout, "breakouts"), (cli.sitemaps, "diff")):
-        monkeypatch.setattr(mod, fn, down)
-    out = tmp_path / "report.md"
-    assert cli.main(["daily", "--config", str(_write_config(tmp_path)), "--state", str(tmp_path / "s"), "--out", str(out),
-                     "--skip", "newsites,review"]) == 0
-    text = out.read_text()
-    assert text.count("network is down") >= 4 and out.with_suffix(".json").exists()
-    command, cost, errors = store.connect(tmp_path / "s").execute(
-        "SELECT command, cost_micros, errors FROM runs").fetchone()
-    assert command == "daily" and cost == 0 and "network is down" in errors     # the day is on record
+def _delivered(**row):
+    day = date.today().isoformat()
+    base = {"day": day, "term": "bulin 47", "source": "tiktok", "kind": "info",
+            "keyword": "bulin 47 lyrics", "usage": "u", "page": "p", "money": "m", "timing": "t",
+            "url": "https://www.tiktok.com/music/x", "context": "text", "evidence": {"list": 2},
+            "window": "open", "speed": {"usage_change": 16199, "rank": 21, "chart": "viral"},
+            "detail": {"posts": 1}}
+    base.update(row)
+    return {"day": day, "rows": [base], "dropped": [], "errors": [], "cost_micros": 133000,
+            "sources": {"x": {"candidates": 1}, "tiktok": {"candidates": 1},
+                        "ph": {"candidates": 0}, "ask": {"candidates": 0}}}
+
+
+def test_daily_writes_the_delivery_report_and_keeps_the_rows(tmp_path, monkeypatch):
+    monkeypatch.setattr(cli.deliver, "run", lambda *a, **k: _delivered())
+    out, state = tmp_path / "report.md", tmp_path / "s"
+    assert cli.main(["daily", "--config", str(_write_config(tmp_path)), "--state", str(state), "--out", str(out)]) == 0
+    assert "bulin 47" in out.read_text() and "bulin 47 lyrics" in out.read_text()
+    day = date.today().isoformat()
+    kept = tmp_path / "reports" / f"{day}.md"
+    assert kept.exists() and kept.read_text() == out.read_text()
+    assert (tmp_path / "reports" / f"{day}.json").exists()
+    conn = store.connect(state)
+    assert conn.execute("SELECT command, cost_micros FROM runs").fetchone() == ("daily", 133000)
+    assert conn.execute("SELECT term FROM deliveries").fetchall() == [("bulin 47",)]
+
+
+def test_a_daily_rerun_does_not_repeat_the_words_it_just_shipped(tmp_path, monkeypatch):
+    state = tmp_path / "s"
+    store.save_deliveries(store.connect(state), [{"day": date.today().isoformat(), "term": "hotel lobby",
+                                                  "source": "ask", "kind": "tool",
+                                                  "keyword": "hotel lobby generator"}])
+    got = {}
+
+    def fake(cfg, state_dir, day=None, **kwargs):
+        got.update(kwargs)
+        return _delivered()
+
+    monkeypatch.setattr(cli.deliver, "run", fake)
+    cli.main(["daily", "--config", str(_write_config(tmp_path)), "--state", str(state),
+              "--out", str(tmp_path / "r.md")])
+    assert "hotel lobby" in got["seen"]
 
 
 def test_daily_report_in_chinese(tmp_path, monkeypatch):
-    _no_judge(monkeypatch)
-    monkeypatch.setattr(cli.breakout, "breakouts", lambda cfg, state: {"searched": 120, "first_run": False, "terms": [], "repos": [
-        {"repo": "Niko1221/Strata", "stars": 7734, "velocity": 859, "delta": 600, "age_days": 9.0, "description": "Qwen3.8", "new": True}]})
+    monkeypatch.setattr(cli.deliver, "run", lambda *a, **k: _delivered(term="hotel lobby", source="ask",
+                                                                     kind="tool", keyword="hotel lobby generator"))
     out = tmp_path / "report.md"
-    cli.main(["daily", "--config", str(_write_config(tmp_path, lang="zh")), "--state", str(tmp_path / "s"), "--out", str(out),
-              "--skip", "x,hf,sitemaps,newsites,review"])
+    cli.main(["daily", "--config", str(_write_config(tmp_path, lang="zh")), "--state", str(tmp_path / "s"),
+              "--out", str(out)])
     text = out.read_text()
-    assert "## 新词雷达" in text and "🆕 [Niko1221/Strata]" in text and "| +600 |" in text
+    assert "# 新词雷达" in text and "## Reddit" in text and "`hotel lobby generator`" in text
+    assert "`hotel lobby generator`" in text
 
 
 # --- topics and mail -----------------------------------------------------------------------------

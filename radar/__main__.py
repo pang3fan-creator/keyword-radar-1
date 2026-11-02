@@ -1,65 +1,44 @@
-"""new-term-radar: terms that are starting to surge, earliest signal first.
+"""new-term-radar: new words people already use, before the keyword tools see them.
 
-  python -m radar daily    [--config config.json] [--state state] [--out report.md] [--skip x,hf,...] [--new-sites] [--mail]
-  python -m radar sources  [--config config.json] [--state state] [--out sources.md] [--mail]
+  python -m radar daily    [--config config.json] [--state state] [--out report.md] [--skip x,tiktok,ph,asks] [--mail]
 
-Signals:
-  ① x         names the accounts you follow said for the first time (AIsa)
-  ① hf        models new to Hugging Face's trending top 50
-  ② breakout  one new GitHub repo taking off on its own
-  ③ sitemaps  pages other sites added since the last run
-  ③ newsites  domains registered in the last 90 days that already rank (weekly; AIsa)
-  ⑥ revenue   products people pay for, growing fastest or newly listed (weekly; TrustMRR key)
-  ⑦ asks      what people ask for on Reddit ("is there an AI tool that…"), sized (weekly; AIsa)
-  ⑧ official  launch posts on the labs' own blogs (RSS/Atom, no key)
-  ⑨ HN        Show HN stories above a point floor that no earlier run read (Algolia, no key)
-  ⑩ PH        launches ranked by votes in the AI topic (Product Hunt GraphQL, PH_API_KEY)
-  ④ gsc       queries your own site got impressions for, for the first time (optional)
-  ⑤ review    every term at 1d/3d (free) and 7d/14d or 14d/30d (Trends), by signal (AIsa)
-  usecases    the generic terms behind today's names, sized against a benchmark keyword (AIsa)
+`daily` reads four sources and writes one keyword per line (docs/Roadmap/07):
+  x        what the seven accounts say is spreading (AIsa; about $0.02 a run)
+  tiktok   the US sound charts: the name, and how many videos it gained today (Apify)
+  ph       Product Hunt launches in the AI topic, with their taglines (PH_API_KEY)
+  ask      Reddit posts asking for a tool, rewritten into one job phrase (AIsa)
 
-  python -m radar slow       [--out slow.md] [--free]   the weekly combo-word list (slow lane)
-  python -m radar precision  [--n 10] [--json]          the sitemap/new-site name precision sample
-  python -m radar keywords   "name one" "name two" [--repo "name one=owner/repo"] [--json]
-  python -m radar leads      [--days 7] [--json]
-  python -m radar pains      "keyword" [--extension ID] [--json]   what people complain about for a kind of tool
-  python -m radar mcp        the MCP server on stdio (needs the `mcp` package)
+Each surviving word gets its long tail from Google suggest, one keyword, the first page of
+Google (DataForSEO, about $0.002 a keyword), and four written fields from a small model. A word
+that fails a gate is listed with the reason; a source that fails says so. The report lands
+in `reports/<date>.md` and the rows in the `deliveries` table, so a later question is a
+query, not a re-run.
 
-`keywords` builds the keyword table for names you give it, now (about $0.05 a name plus
-$0.09 a call for the volume lookup). `leads` lists what the radar has kept, with the
-review's verdicts and the hit rate per signal; it costs nothing.
+  python -m radar keywords "name" [--repo "name=owner/repo"] [--json]   the old keyword table
+  python -m radar deliveries [--days 7] [--json]                        what the new lane shipped
+  python -m radar leads    [--days 7] [--json]                          what the old radar kept
+  python -m radar pains    "keyword" [--json]                           complaints about a kind of tool
+  python -m radar mcp                                                   the MCP server on stdio
 
-`slow` is the weekly combo-word list: seeds from config, Autocomplete for free, then the
-fast lane's own chain (volume, Trends shape, page one) on the biggest. About $0.15 a run;
-`--free` skips every paid step and prints the candidates only. Its words never take a
-name slot or one of the five reads.
-
-`precision` samples the sitemap/new-site echoes by hand once a month: one batch of Google
-Ads monthly searches tells an old product (`bitbucket`) from a name with no demand yet.
-About $0.09 a run: the volume lookup has a base charge, so ten words cost a batch; the report aggregates the last 90 days.
-
-`sources` runs only ① (they change by the hour) and writes a report only when there is a
-name or an error. `daily` runs everything; give it `--skip x,hf` when `sources` runs
-apart, and it lists the ① leads of the last day from the database instead.
-
-A small model scores every term: the name of a specific new thing, or a common word?
-Names lead the report and are kept in state/radar.db for the review.
+The old signals (hf, breakout, sitemaps, new sites, revenue, hn, official, gsc, review,
+usecases, slow, precision) are no longer wired into `daily`; their modules stay until the
+new lane has run for three days (07 §9 Q5).
 """
 from __future__ import annotations
 
 import argparse
 import json
 import os
+import shutil
 import sys
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
-from . import (asks, breakout, config, env, gsc, hn, new_sites, notify, official, pains, ph, precision,
-               report, review, revenue, sitemaps, slow, sources, store, usecases)
+from . import (config, deliver, env, notify, pains, precision, report, review, slow, sources, store,
+               usecases)
 from .i18n import t
 
-SKIPPABLE = {"x", "hf", "breakout", "sitemaps", "newsites", "revenue", "asks", "gsc", "review", "judge", "usecases",
-             "tutorials", "hn", "official", "ph"}
+SKIPPABLE = {"x", "tiktok", "ph", "asks"}
 
 
 def run(fn, skip: bool = False) -> dict:
@@ -94,61 +73,44 @@ def cmd_sources(args, cfg: dict, state: Path) -> int:
     return 0
 
 
+BACKUP_DAYS = 30
+
+
+def backup(state: Path, day: date) -> None:
+    """A daily copy of the only source of truth (07 §7.6); the last 30 days are kept."""
+    target = state / "backup"
+    target.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(state / "radar.db", target / f"{day.isoformat()}.db")
+    cut = (day - timedelta(days=BACKUP_DAYS)).isoformat()
+    for old in target.glob("*.db"):
+        if old.stem < cut:
+            old.unlink(missing_ok=True)
+
+
 def cmd_daily(args, cfg: dict, state: Path) -> int:
+    """Four sources, two gates, one keyword a line: the delivery (07 §5-§7)."""
     started = datetime.now().isoformat(timespec="seconds")
-    weekly = args.new_sites or date.today().weekday() == cfg["new_sites"]["weekday"]
-    blocks = {
-        "x": run(lambda: sources.x_new(cfg, state), "x" in args.skip),
-        "hf": run(lambda: sources.hf_new(cfg, state), "hf" in args.skip),
-        "breakout": run(lambda: breakout.breakouts(cfg, state), "breakout" in args.skip),
-        "sitemap": run(lambda: sitemaps.diff(cfg, state), "sitemaps" in args.skip),
-        "newsite": run(lambda: new_sites.new_sites(cfg, state), "newsites" in args.skip or not weekly),
-        "revenue": run(lambda: revenue.products(cfg, state), "revenue" in args.skip or not (
-            args.revenue or date.today().weekday() == cfg["revenue"]["weekday"])),
-        "ask": run(lambda: asks.asks(cfg, state), "asks" in args.skip or not (
-            args.asks or date.today().weekday() == cfg["asks"]["weekday"])),
-        "hn": run(lambda: hn.hn(cfg, state), "hn" in args.skip),
-        "official": run(lambda: official.official(cfg, state), "official" in args.skip),
-        "ph": run(lambda: ph.ph(cfg, state), "ph" in args.skip),
-    }
-    found = run(lambda: gsc.gsc_new(cfg), "gsc" in args.skip)
-    lead, judged = report.leads(cfg, blocks)
+    day = date.today()
+    skip = {"ask" if name == "asks" else name for name in args.skip}
     conn = store.connect(state)
-    extra = {"judge": judged, "record": run(lambda: {"recorded": store.record(conn, report.to_record(cfg, lead))})}
-    # What the viewers of a widely shared walkthrough ask for: the one-click tool behind a ⚡ lead.
-    extra["tutorials"] = run(lambda: pains.tutorial_asks(cfg, report.named(cfg, lead)),
-                             "tutorials" in args.skip or not cfg["tutorials"]["max_leads"])
-    # With ① run apart, the daily report lists what that job kept since yesterday.
-    extra["recent_sources"] = run(lambda: {"rows": store.recent_sources(conn)}, not {"x", "hf"} <= args.skip)
-    # The names to read for their generic terms: things, not words that surged (usecases.names_to_read).
-    names = usecases.names_to_read(report.to_record(cfg, lead), extra["recent_sources"].get("rows", []))
-    repos = {r["term"]: r["repo"] for r in lead if r.get("repo")}
-    about = {r["term"]: r["about"] for r in lead if r.get("about")}      # a paying product's own description
-    signals = {r["term"]: {"kinds": r["kinds"], "named": r.get("named")} for r in report.to_record(cfg, lead)}
-    extra["usecases"] = run(lambda: usecases.run(cfg, state, list(dict.fromkeys(names)), repos, texts=about,
-                                                 signals=signals),
-                            "usecases" in args.skip or not cfg["usecases"]["per_day"])
-    run(lambda: store.record(conn, report.usecase_leads(extra["usecases"])))
-    rev = run(lambda: review.review(cfg, conn), "review" in args.skip)
-    # What the day cost and what came back, so the budget is a query and not a memory.
-    spent = report.cost_micros(blocks["x"], rev, blocks.get("newsite", {}), blocks.get("ask", {}),
-                               extra.get("usecases", {}), extra.get("tutorials", {}))
-    errors = [f"{k}: {v['error']}" for k, v in {**blocks, "gsc": found, **extra}.items()
-              if isinstance(v, dict) and v.get("error")]
-    errors += [f"review: {e}" for e in rev.get("errors") or []]      # a failed Trends window is not silence
-    if rev.get("error"):
-        errors.append(f"review: {rev['error']}")
-    paid = [r for r in rev.get("checked") or [] if r["days"] >= review.TRENDS_FROM]
-    run(lambda: {"run": store.record_run(
-        conn, "daily", started, datetime.now().isoformat(timespec="seconds"), spent,
-        {"leads": len(report.to_record(cfg, lead)), "reviewed": len(paid),
-         "checked": len(rev.get("checked") or [])}, errors)})
-    summ = run(lambda: store.summary(conn, windows=cfg["review"]["windows"]))
-    text = report.daily(cfg, lead, blocks, found, rev, summ, extra)
-    if args.out:
-        Path(args.out).with_suffix(".json").write_text(json.dumps(
-            {"leads": lead, **blocks, "gsc": found, "review": rev, "summary": summ, "keywords": extra["usecases"]}, ensure_ascii=False, indent=1, default=str))
-    _finish(args, text, f"New-term radar {date.today()}")
+    days = int(cfg["deliver"].get("dedupe_days") or 0)
+    recent = store.deliveries(conn, days or 7, day, include_today=True)
+    history = [row for row in recent if str(row["day"]) < day.isoformat()]   # the "before" list
+    seen = {row["term"] for row in recent} if days else set()                # today included: a rerun repeats nothing
+    result = deliver.run(cfg, state, day, skip=skip, seen=seen)
+    text = deliver.markdown(result, history)
+    reports = cfg["_dir"] / "reports"
+    reports.mkdir(parents=True, exist_ok=True)
+    (reports / f"{day.isoformat()}.md").write_text(text)
+    (reports / f"{day.isoformat()}.json").write_text(json.dumps(result, ensure_ascii=False, indent=1, default=str))
+    run_id = store.record_run(
+        conn, "daily", started, datetime.now().isoformat(timespec="seconds"), result["cost_micros"],
+        {"delivered": len(result["rows"]),
+         "candidates": sum(int(s.get("candidates") or 0) for s in result["sources"].values())},
+        result["errors"])
+    store.save_deliveries(conn, result["rows"], run_id)
+    backup(state, day)
+    _finish(args, text, f"New-term radar {day}")
     return 0
 
 
@@ -197,6 +159,19 @@ def cmd_precision(args, cfg: dict, state: Path) -> int:
     run(lambda: {"run": store.record_run(
         conn, "precision", started, datetime.now().isoformat(timespec="seconds"), result["cost_micros"],
         {"sampled": len(result["sampled"]), **counts}, result["errors"])})
+    return 0
+
+
+def cmd_deliveries(args, state: Path) -> int:
+    """What was delivered, by day: the history the `deliveries` table exists for."""
+    conn = store.connect(state)
+    rows = store.deliveries(conn, args.days, include_today=True)
+    if args.json:
+        print(json.dumps(rows, ensure_ascii=False, indent=1, default=str))
+        return 0
+    for row in rows:
+        print(f"{row['day']}  {row['source']:<7} {row['term']:<28} {row['kind']:<5} {row['keyword']}")
+    print(f"{len(rows)} rows in the last {args.days} days")
     return 0
 
 
@@ -276,7 +251,7 @@ def main(argv: list[str] | None = None) -> int:
         return serve_mcp()
     prog = "python -m radar" if __package__ == "radar" else "new-term-radar"  # installed, the package has another name
     p = argparse.ArgumentParser(prog=prog, description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("command", choices=["daily", "sources", "slow", "precision", "keywords", "leads", "pains"])
+    p.add_argument("command", choices=["daily", "sources", "slow", "precision", "keywords", "deliveries", "leads", "pains"])
     p.add_argument("names", nargs="*", help="for `keywords`: the names to read")
     p.add_argument("--repo", action="append", default=[], metavar="NAME=OWNER/REPO", help="for `keywords`: a name's GitHub repository")
     p.add_argument("--days", type=int, default=7, help="for `leads`: how far back")
@@ -286,9 +261,6 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--state", default="state", help="directory for radar.db and the snapshots")
     p.add_argument("--out", help="write the report (Markdown) here; `daily` also writes a .json beside it")
     p.add_argument("--skip", default="", help="comma-separated: " + ",".join(sorted(SKIPPABLE)))
-    p.add_argument("--new-sites", action="store_true", help="run the weekly new-site signal today")
-    p.add_argument("--revenue", action="store_true", help="run the weekly revenue signal today (needs TRUSTMRR_API_KEY)")
-    p.add_argument("--asks", action="store_true", help="run the weekly Reddit asks signal today")
     p.add_argument("--extension", action="append", default=[], metavar="ID", help="for `pains`: a Chrome extension to read the reviews of")
     p.add_argument("--mail", action="store_true", help="mail the report (see radar/notify.py)")
     p.add_argument("--free", action="store_true", help="for `slow`: skip every paid step and list the candidates")
@@ -300,11 +272,11 @@ def main(argv: list[str] | None = None) -> int:
     state = Path(args.state)
     if args.command == "leads":
         return cmd_leads(args, state)
+    if args.command == "deliveries":
+        return cmd_deliveries(args, state)
     if args.command == "keywords" and not args.names:
         p.error("keywords: give at least one name")
     cfg = config.load(Path(args.config))
-    if "judge" in args.skip:
-        cfg["judge"]["model"] = ""
     state.mkdir(parents=True, exist_ok=True)
     if args.command == "keywords":
         return cmd_keywords(args, cfg, state)
